@@ -72,9 +72,10 @@ No blocking findings. Notes that remain:
 
 A launch lives in one long-lived Node process for minutes to hours. Run the web app with
 `next start` on a long-lived host (Railway, Render, Fly.io or a VM) with managed Postgres
-and Redis for real launches. On Vercel the pages, X connect, wallet connect and the
-status/how/coin/me pages work, and creating a launch returns a 501 `NotImplemented`
-naming the long-lived host it needs (see apps/web/README.md, "Deploy").
+and Redis for real launches. On Vercel the pages, wallet connect and the
+status/how/coin/me pages work, X connect works but can need a retry (its PKCE verifier
+is held in memory), and creating a launch returns a 501 `NotImplemented` naming the
+long-lived host it needs (see apps/web/README.md, "Deploy").
 
 ## Exact environment variables for a mainnet launch
 

@@ -72,9 +72,12 @@ stop between requests, so:
   Attach managed Postgres (`DATABASE_URL`) and Redis (`REDIS_URL`).
 - **Vercel ("Import project", Root Directory `apps/web`)**: `vercel.json` sets the
   framework, install (`pnpm install --frozen-lockfile`) and build (`pnpm build`)
-  commands; keep "Include files outside the root directory" on. Pages, X connect,
-  wallet connect, `/status`, `/how`, `/coin` and `/me` work; creating a launch returns
-  501 `NotImplemented` naming the long-lived host it needs.
+  commands; keep "Include files outside the root directory" on. Pages, wallet connect,
+  `/status`, `/how`, `/coin` and `/me` work; creating a launch returns 501
+  `NotImplemented` naming the long-lived host it needs. X connect needs `DATABASE_URL`
+  for its token store and can fail with "unknown state" when the OAuth callback lands
+  on a different function instance than the start (the PKCE verifier is held in memory
+  by `@quantagent/x`); retrying usually works.
 
 ## Shape
 
