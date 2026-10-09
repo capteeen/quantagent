@@ -222,7 +222,20 @@ interface Base<T extends string, P> {
 type WorkerEvt<T extends string, P> = Base<T, P> & { worker: WorkerName };
 
 export type QuantagentEvent =
-  | Base<"Launch.started", { prompt: string; workers: WorkerName[] }>
+  | Base<
+      "Launch.started",
+      {
+        prompt: string;
+        workers: WorkerName[];
+        /** Seed fields so rebuild(events) reconstructs a Launch from its log alone. */
+        ownerWallet?: string;
+        xAccountId?: string;
+        agentWallet?: string;
+        autopilot?: Autopilot;
+        cluster?: "devnet" | "mainnet-beta";
+        budgets?: Partial<Record<WorkerName, Budget>>;
+      }
+    >
   | Base<"Launch.live", { coinCa: string; siteUrl: string }>
   | Base<"Launch.failed", { reason: string }>
   | Base<"Launch.partial", { failed: WorkerName[] }>
@@ -234,6 +247,8 @@ export type QuantagentEvent =
   | WorkerEvt<"Worker.done", { outputs: Record<string, unknown> }>
   | WorkerEvt<"Worker.failed", { reason: string }>
   | WorkerEvt<"Worker.budgetExceeded", { dimension: keyof Budget; limit: number; used: number }>
+  /** Emitted by ctx.spend so WorkerState.used is replayable from the log. */
+  | WorkerEvt<"Worker.spent", { dimension: keyof Budget; amount: number; used: number; limit: number }>
   | Base<
       "Orchestrator.collapsed",
       { worker: WorkerName; chosen: Candidate; proof: QuantumProof; candidates: Candidate[] }
