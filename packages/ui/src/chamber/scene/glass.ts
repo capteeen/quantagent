@@ -25,6 +25,8 @@ export interface GlassOptions {
   emissiveIntensity?: number;
   /** 1 for the vessel (see-through); 0 for the core so it stays visible through every pane. */
   transmission?: number;
+  /** How strongly the pane reflects the procedural environment (Reflections.tsx). */
+  envMapIntensity?: number;
 }
 
 export function makeGlass(o: GlassOptions = {}): MeshPhysicalMaterial {
@@ -42,7 +44,7 @@ export function makeGlass(o: GlassOptions = {}): MeshPhysicalMaterial {
     opacity: o.opacity ?? 0.55,
     side: DoubleSide,
     depthWrite: false,
-    envMapIntensity: 0,
+    envMapIntensity: o.envMapIntensity ?? 1,
     specularIntensity: 1,
     emissive: new Color(o.emissive ?? "#000000"),
     emissiveIntensity: o.emissiveIntensity ?? 0,

@@ -80,7 +80,9 @@ Rule (SPEC §6.7): no visual without an event. Idle ambience (orbit 0.3°/s, 2% 
 
 ### Framing
 
-`framing="spec"` (default) uses SPEC §6.2 verbatim: camera (0, 1.2, 7.5) looking at (0, 0.4, 0), fov 38. On a 390×844 portrait frame that shows 2.4 world units across at the core, so the outermost tier (radius 3.0) and six of the eight anchors sit outside the frame; the strands leave the frame toward them. `framing="fit"` keeps the fov and target and pulls back on portrait viewports until the whole anchor ring is in frame. Storybook uses `fit`.
+`framing="spec"` (default) uses SPEC §6.2 verbatim: camera (0, 1.2, 7.5) looking at (0, 0.4, 0), fov 38. On a 390×844 portrait frame that shows 2.4 world units across at the core, so the outermost tier (radius 3.0) and six of the eight anchors sit outside the frame; the strands leave the frame toward them. The spec camera also crops the plate on every aspect, because it aims at the core below the vessel's middle. `framing="fit"` keeps the fov and elevation, aims at the middle of the vessel and pulls back until the plate, the anchor ring and the core are all in frame (`fitFraming(aspect)` in `layout.ts`); it never comes closer than 7.5, so a wider viewport widens the frame and leaves the composition alone. The web app and Storybook use `fit`.
+
+Glass only reads by reflecting something, so `scene/Reflections.tsx` builds a procedural environment once (a cyan area light behind the vessel as the rim key, two cold verticals, a dim top panel; no image or HDR file) and the tier edges are thin cyan rings of light under the bloom threshold. Depth of field focuses on the core with a range wide enough to keep the whole vessel sharp.
 
 ### Launch sequence adapter
 

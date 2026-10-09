@@ -69,7 +69,8 @@ export function ChamberMount({ mode, events, onTapWorker, onTapProof, onLive, so
   }, [store, events]);
 
   return (
-    <div data-testid="chamber" data-mode={mode} className="relative h-[46vh] min-h-[300px] w-full overflow-hidden rounded-2xl border border-border bg-void-radial">
+    // the hero: full-bleed out of the 430px column so the chamber is the room, not a card in it
+    <div data-testid="chamber" data-mode={mode} className="relative left-1/2 h-[56vh] min-h-[320px] w-screen -translate-x-1/2 overflow-hidden bg-void-radial md:h-[64vh]">
       {error ? (
         <div className="p-3">
           <EmptyState failed title="The chamber is unavailable." detail={error} />
@@ -83,6 +84,7 @@ export function ChamberMount({ mode, events, onTapWorker, onTapProof, onLive, so
           <mod.Chamber mode={mode} store={store} framing="fit" onTapWorker={onTapWorker} onTapProof={onTapProof} onLive={onLive} sound={sound} className="h-full w-full" />
         </Boundary>
       )}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-void" />
     </div>
   );
 }

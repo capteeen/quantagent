@@ -34,6 +34,7 @@ const params = new URLSearchParams(location.search);
 const mode = (params.get("mode") ?? "launch") as "idle" | "launch" | "live" | "coin";
 const reduced = params.get("reduced") === "1";
 const framing = (params.get("framing") ?? "spec") as "spec" | "fit";
+const governor = params.get("governor") !== "0";
 
 window.__chamber = {
   ready: false,
@@ -91,7 +92,7 @@ createRoot(root).render(
       store={store}
       reducedMotion={reduced}
       framing={framing}
-      governor
+      governor={governor}
       onLive={() => {
         window.__chamber.lived++;
       }}

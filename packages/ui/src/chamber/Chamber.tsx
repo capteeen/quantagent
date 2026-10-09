@@ -18,6 +18,7 @@ import { ChamberContext, createRuntime, createSequenceStore, type ChamberContext
 import { SceneFog } from "./scene/Fog";
 import { Background } from "./scene/Background";
 import { Lights } from "./scene/Lights";
+import { Reflections } from "./scene/Reflections";
 import { Vessel } from "./scene/Vessel";
 import { Core } from "./scene/Core";
 import { Vapour } from "./scene/Vapour";
@@ -58,7 +59,8 @@ export interface ChamberProps {
   /**
    * "spec" (default): camera (0,1.2,7.5) looking at (0,0.4,0), fov 38, verbatim from SPEC §6.2; on a
    * 390px-wide portrait frame the outer tier and six of the eight anchors sit outside the frame.
-   * "fit": keep fov and target, pull back on portrait viewports until the anchor ring is in frame.
+   * "fit": keep fov and elevation, aim at the vessel's middle and pull back until the plate, the
+   * anchor ring and the core are all in frame (layout.fitFraming).
    */
   framing?: "spec" | "fit" | undefined;
   className?: string | undefined;
@@ -138,6 +140,9 @@ export function Chamber({ mode, store, onTapWorker, onTapProof, onLive, sound = 
     [store, perf, prefersReduced, framing, sound, soundOn, sequences, onTapWorker, onTapProof],
   );
 
+  // a full-width desktop hero at 2× is four times the pixels of a phone; 1.5× keeps the glass
+  // sharp there without pushing the frame-time governor into stripping the look
+  const maxDpr = typeof window !== "undefined" && window.innerWidth > 900 ? 1.5 : 2;
   const background = `radial-gradient(ellipse at 50% 45%, ${VOID} 0%, ${VOID} 40%, ${VOID_EDGE} 100%)`;
 
   return (
@@ -153,7 +158,7 @@ export function Chamber({ mode, store, onTapWorker, onTapProof, onLive, sound = 
       <ChamberContext.Provider value={ctx}>
         <Canvas
           gl={{ antialias: false, alpha: false, powerPreference: "high-performance", stencil: false, depth: true }}
-          dpr={[1, 2]}
+          dpr={[1, maxDpr]}
           camera={{ fov: CAMERA_FOV, position: CAMERA_POSITION.toArray(), near: 0.1, far: 60 }}
           frameloop="always"
           flat={false}
@@ -169,6 +174,9 @@ export function Chamber({ mode, store, onTapWorker, onTapProof, onLive, sound = 
             <SceneFog />
             <Background />
             <Lights />
+            <Suspense fallback={null}>
+              <Reflections />
+            </Suspense>
             <CameraRig />
             <PerfGovernor enabled={governor} />
             <Vessel />

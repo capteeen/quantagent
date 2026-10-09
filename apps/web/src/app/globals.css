@@ -9,6 +9,8 @@ body {
   background: var(--qa-color-void);
   color: var(--qa-color-text);
   -webkit-text-size-adjust: 100%;
+  /* the chamber hero is 100vw wide; never let a scrollbar's width turn into a sideways scroll */
+  overflow-x: clip;
 }
 
 h1,

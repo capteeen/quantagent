@@ -4,6 +4,8 @@
  *   pnpm --filter @quantagent/ui shot -- <mode> <seq|-1> <out.png> [waitMs] [reduced 0|1] [framing spec|fit]
  *
  * mode = idle | launch | live | coin. seq = apply fixture events up to this seq (-1 = none).
+ * Env: SHOT_W / SHOT_H viewport (default 390×844), SHOT_GOVERNOR=0 keeps every effect on
+ * (software GL is far below 55fps, so the governor would otherwise strip the look).
  * Uses the preinstalled Chromium under /opt/pw-browsers (never runs `playwright install`).
  */
 import { existsSync } from "node:fs";
@@ -40,15 +42,15 @@ async function main() {
     args: ["--no-sandbox", "--ignore-gpu-blocklist", "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
   });
   try {
-    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    const ctx = await browser.newContext({ viewport: { width: Number(process.env["SHOT_W"] ?? 390), height: Number(process.env["SHOT_H"] ?? 844) }, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     const errs: string[] = [];
     page.on("pageerror", (e) => errs.push(e.message));
     page.on("console", (m) => {
       if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text());
     });
-    await page.goto(`${url}?mode=${mode}&reduced=${reduced}&framing=${framing}`);
-    await page.waitForFunction(() => window.__chamber?.ready === true, undefined, { timeout: 30_000 });
+    await page.goto(`${url}?mode=${mode}&reduced=${reduced}&framing=${framing}&governor=${process.env["SHOT_GOVERNOR"] ?? "1"}`);
+    await page.waitForFunction(() => window.__chamber?.ready === true, undefined, { timeout: 120_000 });
     await page.waitForTimeout(1200);
     if (seq >= 0) {
       await page.evaluate((n) => {

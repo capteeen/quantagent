@@ -3,7 +3,7 @@
  * curves, QSD chain/merkle/ring positions. Pure three.js math, no rendering, so tests can
  * count what the scene will draw (8 strands, 8 anchors at 45°, 67×16 links, 256 leaves).
  */
-import { CatmullRomCurve3, Vector3 } from "three";
+import { CatmullRomCurve3, PerspectiveCamera, Vector3 } from "three";
 import { WORKER_NAMES, type WorkerName } from "@quantagent/core/types";
 import { MERKLE_LEAVES, MERKLE_LEVELS, QSD_CHAINS, QSD_DEPTH } from "./types";
 
@@ -26,6 +26,50 @@ export const CAMERA_TARGET = new Vector3(0, 0.4, 0);
 export const CAMERA_FOV = 38;
 export const CAMERA_DISTANCE_FAR = 7.5;
 export const CAMERA_DISTANCE_NEAR = 4.2;
+/**
+ * "fit" framing: the spec camera looks at the core (y 0.4) from y 1.2, which crops the plate
+ * and the outer tier on every aspect. Fit keeps the spec fov and elevation, aims at the middle
+ * of the vessel, and pulls back until the plate, the anchor ring and the core are all in frame.
+ * It never comes closer than the spec distance, so wider viewports widen the frame only.
+ */
+export interface Framing {
+  /** Multiplier on the camera distance (≥ 1). */
+  distanceScale: number;
+  /** y of the look-at point at the far (7.5) distance; the dolly to 4.2 eases it back to the core. */
+  targetY: number;
+}
+
+const FIT_MARGIN_X = 0.06;
+const FIT_MARGIN_Y = 0.1;
+
+export function fitFraming(aspect: number): Framing {
+  const elev = Math.atan2(CAMERA_POSITION.y - CAMERA_TARGET.y, CAMERA_POSITION.z);
+  const bottom = CORE_POSITION.y - CORE_RADIUS;
+  const top = PLATE_Y + PLATE_THICKNESS;
+  const targetY = (bottom + top) / 2;
+  const pts: Vector3[] = [];
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    pts.push(new Vector3(Math.cos(a) * PLATE_RADIUS, top, Math.sin(a) * PLATE_RADIUS));
+    pts.push(new Vector3(Math.cos(a) * TIER_OUTER_RADIUS, ANCHOR_Y, Math.sin(a) * TIER_OUTER_RADIUS));
+  }
+  pts.push(new Vector3(0, bottom, 0));
+  const cam = new PerspectiveCamera(CAMERA_FOV, Math.max(0.05, aspect), 0.1, 200);
+  const target = new Vector3(0, targetY, 0);
+  const v = new Vector3();
+  for (let d = CAMERA_DISTANCE_FAR; d < 60; d += 0.05) {
+    cam.position.set(0, targetY + Math.sin(elev) * d, Math.cos(elev) * d);
+    cam.lookAt(target);
+    cam.updateMatrixWorld();
+    const fits = pts.every((p) => {
+      v.copy(p).project(cam);
+      return Math.abs(v.x) <= 1 - FIT_MARGIN_X && Math.abs(v.y) <= 1 - FIT_MARGIN_Y;
+    });
+    if (fits) return { distanceScale: d / CAMERA_DISTANCE_FAR, targetY };
+  }
+  return { distanceScale: 60 / CAMERA_DISTANCE_FAR, targetY };
+}
+
 /** Fog, SPEC §6.1. */
 export const FOG_NEAR = 8;
 export const FOG_FAR = 40;

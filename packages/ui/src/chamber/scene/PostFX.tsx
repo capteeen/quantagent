@@ -6,10 +6,11 @@
  */
 import { useRef, type Ref } from "react";
 import { Vector2 } from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { Bloom, ChromaticAberration, DepthOfField, EffectComposer } from "@react-three/postprocessing";
 import type { ChromaticAberrationEffect, DepthOfFieldEffect } from "postprocessing";
 import { useChamberContext } from "./context";
+import { CORE_POSITION, TIER_OUTER_RADIUS } from "../layout";
 
 export const BLOOM = { intensity: 0.9, radius: 0.6, threshold: 0.75 } as const;
 
@@ -20,6 +21,7 @@ export default function PostFX() {
   const caRef = ca as unknown as Ref<typeof ChromaticAberrationEffect>;
   const offset = useRef(new Vector2(0, 0));
   const dof = useRef<DepthOfFieldEffect | null>(null);
+  const camera = useThree((s) => s.camera);
 
   useFrame(() => {
     const rt = runtime.current;
@@ -29,15 +31,20 @@ export default function PostFX() {
       offset.current.set(a, a);
       eff.offset.copy(offset.current);
     }
-    // focus follows the camera's dolly so the core stays sharp through the QSD handoff
+    // focus on the core at whatever distance the camera (fit framing, dolly) is at, with a range
+    // wide enough that the whole vessel stays sharp: depth of field softens the void and the
+    // vapour beyond it, never the glass
     const d = dof.current;
-    if (d) d.cocMaterial.worldFocusDistance = rt.fx.distance;
+    if (d) {
+      d.cocMaterial.worldFocusDistance = camera.position.distanceTo(CORE_POSITION);
+      d.cocMaterial.worldFocusRange = TIER_OUTER_RADIUS * 10;
+    }
   });
 
   return (
     <EffectComposer multisampling={0} enableNormalPass={false}>
       <Bloom intensity={BLOOM.intensity} radius={perf.bloomRadius} luminanceThreshold={BLOOM.threshold} luminanceSmoothing={0.08} mipmapBlur />
-      {perf.dof ? <DepthOfField ref={dof} worldFocusDistance={7.5} worldFocusRange={3.5} bokehScale={2} /> : <></>}
+      {perf.dof ? <DepthOfField ref={dof} worldFocusDistance={7.5} worldFocusRange={TIER_OUTER_RADIUS * 10} bokehScale={1.2} /> : <></>}
       {perf.aberration ? <ChromaticAberration ref={caRef} offset={offset.current} radialModulation={false} modulationOffset={0} /> : <></>}
     </EffectComposer>
   );
