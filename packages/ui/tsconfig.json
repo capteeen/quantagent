@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "vitest/globals"],
+    "noEmit": false
+  },
+  "include": ["src", "test", "scripts", ".storybook"],
+  "exclude": ["dist", "node_modules", "storybook-static"]
+}

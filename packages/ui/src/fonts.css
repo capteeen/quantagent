@@ -1,0 +1,21 @@
+/* quantagent typefaces. JetBrains Mono for all data and logs; Space Grotesk 600 for headings. */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@600&display=swap");
+
+:root {
+  --qa-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --qa-font-heading: "Space Grotesk", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --qa-font-heading-weight: 600;
+}
+
+html,
+body {
+  font-family: var(--qa-font-mono);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--qa-font-heading);
+  font-weight: var(--qa-font-heading-weight);
+}
