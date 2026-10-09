@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Typefaces per @quantagent/ui/src/fonts.css: JetBrains Mono for all data and logs; Space Grotesk 600 for headings. */
+html,
+body {
+  font-family: var(--qa-font-mono);
+  background: var(--qa-color-void);
+  color: var(--qa-color-text);
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--qa-font-heading);
+  font-weight: var(--qa-font-heading-weight);
+}
+
+/* /how: rendered markdown */
+.doc {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.doc h1 { font-size: 1.25rem; margin: 1.25rem 0 0.5rem; color: var(--qa-color-tunnel); }
+.doc h2 { font-size: 1.05rem; margin: 1.25rem 0 0.5rem; color: var(--qa-color-tunnel); }
+.doc h3 { font-size: 0.95rem; margin: 1rem 0 0.4rem; color: var(--qa-color-tunnel); }
+.doc p { margin: 0.5rem 0; }
+.doc ul, .doc ol { margin: 0.5rem 0 0.5rem 1.25rem; }
+.doc ul { list-style: disc; }
+.doc ol { list-style: decimal; }
+.doc li { margin: 0.2rem 0; }
+.doc code { background: var(--qa-color-panel); border: 1px solid var(--qa-color-border); border-radius: 4px; padding: 0 0.25rem; font-size: 0.8em; }
+.doc pre { background: var(--qa-color-panel); border: 1px solid var(--qa-color-border); border-radius: 8px; padding: 0.75rem; overflow-x: auto; margin: 0.75rem 0; }
+.doc pre code { border: 0; padding: 0; background: transparent; }
+.doc table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.8rem; display: block; overflow-x: auto; }
+.doc th, .doc td { border: 1px solid var(--qa-color-border); padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+.doc a { color: var(--qa-color-probability); text-decoration: underline; text-decoration-style: dotted; }
+.doc blockquote { border-left: 2px solid var(--qa-color-border); padding-left: 0.75rem; color: var(--qa-color-muted); margin: 0.75rem 0; }
+.doc hr { border: 0; border-top: 1px solid var(--qa-color-border); margin: 1rem 0; }
