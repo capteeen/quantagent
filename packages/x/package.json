@@ -1,0 +1,31 @@
+{
+  "name": "@quantagent/x",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "quantagent X client: OAuth 2.0 PKCE on the user's own account, posting/threads/media/mentions/search/trends/profile, rate limiting, dead-letter queue, monthly call budget.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./oauth": "./src/oauth/index.ts",
+    "./client": "./src/client/index.ts",
+    "./ratelimit": "./src/ratelimit/index.ts",
+    "./budget": "./src/budget/index.ts"
+  },
+  "files": ["src", "dist", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@quantagent/core": "workspace:*",
+    "ioredis": "^5.4.1",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}
