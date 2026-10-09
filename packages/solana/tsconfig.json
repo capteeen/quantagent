@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.AsyncIterable"]
+  },
+  "include": ["src", "test"]
+}

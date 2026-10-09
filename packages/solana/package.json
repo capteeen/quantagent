@@ -1,0 +1,40 @@
+{
+  "name": "@quantagent/solana",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "quantagent chain: QSD integration boundary, pump.fun via PumpPortal, per-launch encrypted agent wallets with SOL budgets, trades, copycat discovery, Helius anomaly and milestone watchers.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./qsd": "./src/qsd/index.ts",
+    "./wallet": "./src/wallet/index.ts",
+    "./quantum": "./src/quantum/index.ts",
+    "./pumpfun": "./src/pumpfun/index.ts",
+    "./discovery": "./src/discovery/index.ts",
+    "./anomalies": "./src/anomalies/index.ts"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@quantagent/core": "workspace:*",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "jimp": "^1.6.0",
+    "pg": "^8.13.1",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}
