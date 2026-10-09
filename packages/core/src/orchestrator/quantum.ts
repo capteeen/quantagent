@@ -6,7 +6,7 @@ import type { QuantumClient } from "../../types/clients";
  * or accepting a proof from one, is refused in production. There is no fallback
  * path in this package: if the draw fails, the user picks and the UI says why.
  */
-export const FORBIDDEN_PROVIDER_PATTERN = /^(pseudo|prng|mock|fake|math(\.|-)?random|random)/i;
+export const FORBIDDEN_PROVIDER_PATTERN = /(pseudo|prng|mock|fake|math(\.|-)?random|random|dummy|stub|seeded?)/i;
 
 export function isProduction(env: { NODE_ENV?: string | undefined } = process.env): boolean {
   return env.NODE_ENV === "production";

@@ -112,6 +112,11 @@ export async function launch(
   if (!prompt || !prompt.trim()) throw new Error("launch needs a prompt");
   if (!connections?.ownerWallet) throw new Error("launch needs connections.ownerWallet");
   if (!connections?.xAccountId) throw new Error("launch needs connections.xAccountId");
+  if (deps.clients?.x && deps.clients.x.accountId !== connections.xAccountId) {
+    throw new Error(
+      `the X client is scoped to account ${deps.clients.x.accountId} but the launch connects ${connections.xAccountId}; the Voice posts only from the connected account`,
+    );
+  }
   const byName = assertRoster(deps.workers);
 
   const id = deps.launchId ?? nanoid(12);
