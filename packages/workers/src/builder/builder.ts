@@ -49,6 +49,8 @@ export class BuilderWorker implements Worker {
   readonly name = WORKER;
   private state!: SiteState;
   private slug = "";
+  /** The last slug the host accepted; publishes fall back to it when a new slug is refused. */
+  private servedSlug = "";
   private url: string | undefined;
   private deploys = 0;
   private failures = 0;
@@ -208,6 +210,7 @@ export class BuilderWorker implements Worker {
     try {
       const { url, deployId } = await hosting.publish({ slug: this.slug, html, assets: [{ path: OG_PATH, url: ogDataUrl(svg) }] });
       this.url = url;
+      this.servedSlug = this.slug;
       this.state.siteUrl = url;
       this.deploys++;
       ctx.emit({
@@ -224,6 +227,14 @@ export class BuilderWorker implements Worker {
         reason: `publish after ${trigger} failed: ${errorText(err)}`,
         payload: { trigger, error: errorText(err) },
       });
+      // A new slug the host refuses must not strand the content: fall back to the slug it last served,
+      // so the CA block and every later patch still reach a page that exists.
+      if (this.servedSlug && this.slug !== this.servedSlug && !this.stopped) {
+        const refused = this.slug;
+        this.slug = this.servedSlug;
+        ctx.progress("publish.fallback", `host refused slug ${refused}; publishing to ${this.servedSlug} instead`, { refused, slug: this.servedSlug, trigger });
+        await this.publishOnce(ctx, hosting, `${trigger}:fallback`);
+      }
     }
   }
 }

@@ -146,7 +146,11 @@ export function reduce(state: Launch, event: QuantagentEvent): Launch {
     case "Launcher.deployed":
       return { ...state, coinCa: event.payload.coinCa };
     case "Builder.published":
-      return { ...state, siteUrl: event.payload.url };
+      return {
+        ...state,
+        siteUrl: event.payload.url,
+        ...(state.coinCa && !state.siteCaPublishedAt ? { siteCaPublishedAt: event.at } : {}),
+      };
 
     default:
       return state;

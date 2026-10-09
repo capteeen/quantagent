@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { failedWorkers } from "@quantagent/core";
 import { WORKER_NAMES } from "@quantagent/core/types";
+import { sleep } from "./helpers/fakes";
 import { simulate, wrapWorker, type Sim } from "./helpers/launch";
 
 let sim: Sim | undefined;
@@ -124,5 +125,112 @@ describe("worker isolation (SPEC §3 'a crashed worker cannot crash another', §
     expect(failedWorkers(state)).toContain("Artist");
     expect(outcome, "a launch whose Artist died must settle").toBe("settled");
     expect(["failed", "partial"]).toContain(state.status);
+  });
+});
+
+describe("liveness re-verification: one more adversarial timing per fix (F1/F2 close-out)", () => {
+  it("(g) ADVERSARIAL F1: the Launcher dies while the Builder's named republish is still in flight — the coalesced 'launch failed' publish must land and the launch must settle", async () => {
+    // The Builder's publish queue coalesces: a trigger that arrives mid-publish is queued and run
+    // once the in-flight publish returns. The LauncherFailed path in start() goes through that same
+    // queue, so a Launcher that dies while the <ticker> publish is on the wire must not be lost,
+    // and every page the host receives from then on must say "launch failed", never "pending".
+    let releasePublish!: () => void;
+    const launcherFailedSeen = new Promise<void>((r) => (releasePublish = r));
+    sim = await simulate({
+      autopilot: { posts: true },
+      // the first publish at the ticker slug stays on the wire until the Launcher has failed
+      hosting: {
+        hold: async (input, attempt) => {
+          if (!input.slug.startsWith("q-") && attempt === 2) await Promise.race([launcherFailedSeen, sleep(5000)]);
+        },
+      },
+      solana: { deployFail: new Error("portal refused the deploy") },
+    });
+    const failed = await sim.waitFor("Worker.failed", { predicate: (e) => e.worker === "Launcher", timeoutMs: 10_000 });
+    releasePublish();
+    const outcome = await sim.settledOrTimeout(8000);
+    expect(outcome, "the launch must settle").toBe("settled");
+
+    // Timing proof: the Launcher's failure landed between the Builder's "publish" progress for
+    // Ideator.named and that publish's Builder.published.
+    const namedPublishStart = sim
+      .ofType("Worker.progress")
+      .find((e) => e.worker === "Builder" && e.payload.step === "publish" && String(e.payload.detail?.trigger).split("+").includes("Ideator.named"));
+    expect(namedPublishStart, "the Builder started a republish for Ideator.named").toBeTruthy();
+    const namedPublished = sim.ofType("Builder.published").find((e) => e.payload.trigger.split("+").includes("Ideator.named"));
+    expect(namedPublished, "that republish completed").toBeTruthy();
+    expect(failed.seq, "Launcher failed after the named publish started").toBeGreaterThan(namedPublishStart!.seq);
+    expect(failed.seq, "Launcher failed before the named publish returned").toBeLessThan(namedPublished!.seq);
+
+    const state = sim.handle.getState();
+    expect(state.status).toBe("failed");
+    expect(sim.ofType("Launch.failed")).toHaveLength(1);
+    expect(state.workers.Builder.status, "the Builder finished instead of hanging").toBe("done");
+    expect(state.workers.Builder.outputs?.launchFailed).toContain("portal refused the deploy");
+    // The queued failure publish ran after the in-flight one...
+    const failurePublish = sim.ofType("Builder.published").find((e) => e.payload.trigger.split("+").includes("Launcher.failed"));
+    expect(failurePublish, "a Builder.published triggered by Launcher.failed").toBeTruthy();
+    expect(failurePublish!.seq).toBeGreaterThan(namedPublished!.seq);
+    // ...and from that publish on (the surviving Artist keeps triggering republishes) every page says "launch failed".
+    const publishedUrls = sim.ofType("Builder.published").map((e) => e.payload.url);
+    const failureIndex = publishedUrls.length - sim.ofType("Builder.published").filter((e) => e.seq >= failurePublish!.seq).length;
+    const after = sim.fakes.hosting.publishes.slice(failureIndex);
+    expect(after.length).toBeGreaterThanOrEqual(1);
+    for (const p of after) {
+      expect(p.html).toContain("launch failed");
+      expect(p.html).not.toContain("CA: pending launch");
+      expect(p.html).not.toContain("https://pump.fun/coin/");
+    }
+    // No CA was ever announced.
+    expect(sim.ofType("Voice.posted").filter((e) => e.payload.kind === "ca")).toEqual([]);
+    expect(sim.fakes.x.allTexts().join("\n")).not.toMatch(/CA: [1-9A-HJ-NP-Za-km-z]{32,44}/);
+  });
+
+  it("(h) ADVERSARIAL F2: the Ideator dies after Artist.candidates but before Orchestrator.collapsed — the Artist finishes with its drawn logo, the Launcher fails with the reason, the launch settles", async () => {
+    // Hold the quantum draw open while the Ideator dies, so the Artist is inside ctx.collapse()
+    // (not yet at `await this.named`) when the Worker.failed(Ideator) arrives.
+    let releaseLlm!: () => void;
+    const artistCandidatesSeen = new Promise<void>((r) => (releaseLlm = r));
+    let releaseDraw!: () => void;
+    const ideatorFailedSeen = new Promise<void>((r) => (releaseDraw = r));
+    sim = await simulate({
+      autopilot: { posts: true },
+      llm: {
+        gate: async (call) => {
+          if (/name memecoins/i.test(call.system)) {
+            await artistCandidatesSeen;
+            throw new Error("llm died mid-launch");
+          }
+        },
+      },
+      quantum: {
+        gate: async (input) => {
+          if (input.context.includes(":Artist:")) await ideatorFailedSeen;
+        },
+      },
+    });
+    void sim.waitFor("Worker.candidates", { predicate: (e) => e.worker === "Artist", timeoutMs: 10_000 }).then(() => releaseLlm());
+    void sim.waitFor("Worker.failed", { predicate: (e) => e.worker === "Ideator", timeoutMs: 10_000 }).then(() => releaseDraw());
+
+    const outcome = await sim.settledOrTimeout(12_000);
+    expect(outcome, "the launch must settle").toBe("settled");
+
+    const candidates = sim.ofType("Worker.candidates").find((e) => e.worker === "Artist")!;
+    const ideatorFailed = sim.ofType("Worker.failed").find((e) => e.worker === "Ideator")!;
+    const collapsed = sim.ofType("Orchestrator.collapsed").find((e) => e.payload.worker === "Artist")!;
+    expect(candidates && ideatorFailed && collapsed, "candidates, Ideator failure and collapse all happened").toBeTruthy();
+    expect(ideatorFailed.seq).toBeGreaterThan(candidates.seq);
+    expect(collapsed.seq, "the Ideator died while the Artist's collapse was open").toBeGreaterThan(ideatorFailed.seq);
+
+    const state = sim.handle.getState();
+    expect(state.status).toBe("failed");
+    expect(sim.ofType("Launch.failed")).toHaveLength(1);
+    expect(state.workers.Artist.status, "the Artist keeps its prompt-only logo and finishes").toBe("done");
+    expect(String(state.workers.Artist.outputs?.incomplete)).toMatch(/Ideator failed before naming the coin/);
+    expect(state.workers.Launcher.status).toBe("failed");
+    expect(state.workers.Launcher.failReason).toMatch(/Ideator failed before naming the coin/);
+    expect(state.workers.Builder.status).toBe("done");
+    expect(sim.fakes.solana.deploys).toEqual([]);
+    expect(sim.ofType("Artist.logoReady"), "no named logo was ever claimed").toEqual([]);
   });
 });

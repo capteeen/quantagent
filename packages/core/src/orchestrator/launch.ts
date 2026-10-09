@@ -279,16 +279,20 @@ export async function launch(
     }
     if (state.status !== "running") return;
     if (state.coinCa) {
-      if (failed.length === 0 && state.siteUrl) {
+      if (failed.length === 0 && state.siteUrl && state.siteCaPublishedAt) {
         emit({
           type: "Launch.live",
-          reason: "coin deployed and site published",
+          reason: "coin deployed and site published with the CA",
           payload: { coinCa: state.coinCa, siteUrl: state.siteUrl },
         });
       } else {
         emit({
           type: "Launch.partial",
-          reason: failed.length ? `coin deployed but ${failed.join(", ")} failed` : "coin deployed but no site was published",
+          reason: failed.length
+            ? `coin deployed but ${failed.join(", ")} failed`
+            : state.siteUrl
+              ? "coin deployed but the site never published the CA"
+              : "coin deployed but no site was published",
           payload: { failed },
         });
       }

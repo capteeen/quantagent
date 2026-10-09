@@ -175,3 +175,100 @@ describe("THE CA IS NEVER WRONG: zero tolerance grep of every rendered surface",
     for (const e of log) expect(foreign(JSON.stringify(e)), `${e.type} #${e.seq}`).toEqual([]);
   });
 });
+
+describe("F3 re-verification: the Builder's named republish fails — does the Voice still link a page that exists?", () => {
+  /** urls the host actually served, and the last html it holds for each. */
+  function served(s: Sim): Map<string, string> {
+    const m = new Map<string, string>();
+    for (const p of s.fakes.hosting.publishes) m.set(`https://${p.slug}.quantagent.site`, p.html);
+    return m;
+  }
+
+  describe("one transient failure: the first <ticker> publish 502s, later triggers republish, then the deploy", () => {
+    let s: Sim;
+    beforeAll(async () => {
+      s = await simulate({
+        autopilot: { posts: true },
+        hosting: { failFor: (input, attempt) => (attempt === 2 && !input.slug.startsWith("q-") ? new Error("edge 502") : undefined) },
+        solana: { deployDelayMs: 25 },
+      });
+      expect(await s.settledOrTimeout(25_000)).toBe("settled");
+    });
+    afterAll(async () => {
+      await s?.stop();
+    });
+
+    it("the failed attempt was the Ideator.named republish (Builder.patchFailed), and the launch still went live", () => {
+      const failed = s.ofType("Builder.patchFailed");
+      expect(failed).toHaveLength(1);
+      expect(failed[0]!.payload.trigger.split("+")).toContain("Ideator.named");
+      expect(s.handle.getState().status).toBe("live");
+    });
+
+    it("every url the Voice posted was served by the host, and the page behind the CA post carries the CA", () => {
+      const pages = served(s);
+      const caPost = s.ofType("Voice.posted").find((e) => e.payload.kind === "ca")!.payload.text;
+      const thread = s.fakes.x.threads[0]!.posts.map((p) => p.text).join("\n");
+      const linked = [...new Set([...caPost.matchAll(/https:\/\/[a-z0-9-]+\.quantagent\.site/g), ...thread.matchAll(/https:\/\/[a-z0-9-]+\.quantagent\.site/g)].map((m) => m[0]))];
+      expect(linked.length).toBeGreaterThanOrEqual(1);
+      for (const url of linked) expect(pages.has(url), `${url} was served`).toBe(true);
+      const caUrl = caPost.match(/https:\/\/[a-z0-9-]+\.quantagent\.site/)![0];
+      expect(pages.get(caUrl)).toContain(`<code>${CA}</code>`);
+      expect(caUrl).toBe(s.handle.getState().siteUrl);
+    });
+  });
+
+  describe("permanent failure: the host refuses the <ticker> slug on every attempt (slug taken), the coin deploys anyway", () => {
+    let s: Sim;
+    beforeAll(async () => {
+      s = await simulate({
+        autopilot: { posts: true },
+        hosting: { failFor: (input) => (input.slug.startsWith("q-") ? undefined : new Error(`slug ${input.slug} is already taken on the host`)) },
+        solana: { deployDelayMs: 25 },
+      });
+      expect(await s.settledOrTimeout(25_000)).toBe("settled");
+    });
+    afterAll(async () => {
+      await s?.stop();
+    });
+
+    it("the launch settles; the coin deployed; only the q-<launchId> page was ever served", () => {
+      expect(s.handle.getState().coinCa).toBe(CA);
+      expect(s.fakes.hosting.publishes.every((p) => p.slug.startsWith("q-"))).toBe(true);
+      // The ticker slug is refused once; the Builder then falls back to the served slug for good.
+      expect(s.ofType("Builder.patchFailed").length).toBeGreaterThanOrEqual(1);
+      expect(s.ofType("Builder.published").every((e) => e.payload.url.startsWith("https://q-"))).toBe(true);
+    });
+
+    it("the Voice links only pages that exist (the q-<launchId> page)", () => {
+      const pages = served(s);
+      const caPost = s.ofType("Voice.posted").find((e) => e.payload.kind === "ca")!.payload.text;
+      const caUrl = caPost.match(/https:\/\/[a-z0-9-]+\.quantagent\.site/)![0];
+      expect(pages.has(caUrl), `${caUrl} was served`).toBe(true);
+      expect(caPost).toContain(`CA: ${CA}`);
+    });
+
+    it("FINDING if this fails: the page the CA post links must carry the CA (the Builder must fall back to a slug the host accepts)", () => {
+      // Was finding F6: the Builder moved to the ticker slug before the host accepted it and never fell
+      // back. It now falls back to the last served slug, so the CA reaches the page the Voice links.
+      const pages = served(s);
+      const caPost = s.ofType("Voice.posted").find((e) => e.payload.kind === "ca")!.payload.text;
+      const caUrl = caPost.match(/https:\/\/[a-z0-9-]+\.quantagent\.site/)![0];
+      expect(pages.get(caUrl)).toContain(`<code>${CA}</code>`);
+      expect(pages.get(caUrl)).not.toContain("CA: pending launch");
+    });
+
+    it("FINDING if this fails: a launch whose site never received the CA must not report Launch.live with that site url", () => {
+      const state = s.handle.getState();
+      const pages = served(s);
+      const live = s.ofType("Launch.live");
+      if (live.length) {
+        const html = pages.get(live[0]!.payload.siteUrl);
+        expect(html, "Launch.live.siteUrl was served").toBeTruthy();
+        expect(html, "Launch.live.siteUrl carries the CA").toContain(`<code>${CA}</code>`);
+      } else {
+        expect(state.status).toBe("partial");
+      }
+    });
+  });
+});

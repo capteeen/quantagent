@@ -21,10 +21,12 @@ import {
   X_ACCOUNT_ID,
   sleep,
   type FakeHosting,
+  type FakeHostingOptions,
   type FakeImage,
   type FakeLlm,
   type FakeLlmOptions,
   type FakeQuantum,
+  type FakeQuantumOptions,
   type FakeSolana,
   type FakeSolanaOptions,
   type FakeX,
@@ -52,8 +54,9 @@ export interface SimOptions {
   x?: FakeXOptions;
   solana?: FakeSolanaOptions;
   hostingFail?: Error;
+  hosting?: FakeHostingOptions;
   imageFail?: (prompt: string, n: number) => string | undefined;
-  quantum?: { provider?: string; selectedIndex?: number; fail?: Error } | null;
+  quantum?: FakeQuantumOptions | null;
   workerOptions?: CreateWorkersOptions;
   /** Replace or wrap workers after the roster is built (e.g. kill one). */
   patchWorkers?: (workers: Worker[], fakes: Fakes) => Worker[];
@@ -85,7 +88,7 @@ export function makeFakes(opts: SimOptions = {}): Fakes {
     image: fakeImage(opts.imageFail ? { fail: opts.imageFail } : {}),
     x: fakeX({ accountId: opts.xAccountId ?? X_ACCOUNT_ID, ...(opts.x ?? {}) }),
     solana: fakeSolana(opts.solana),
-    hosting: fakeHosting(opts.hostingFail ? { fail: opts.hostingFail } : {}),
+    hosting: fakeHosting({ ...(opts.hosting ?? {}), ...(opts.hostingFail ? { fail: opts.hostingFail } : {}) }),
     quantum: fakeQuantum(opts.quantum ?? {}),
     store: fakeObjectStore(),
   };

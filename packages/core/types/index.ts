@@ -128,6 +128,8 @@ export interface Launch {
   liveAt?: string;
   coinCa?: string;
   siteUrl?: string;
+  /** Set by the first Builder.published after Launcher.deployed: the site shows the real CA. */
+  siteCaPublishedAt?: string;
   /** Public key of the per-launch agent wallet. */
   agentWallet: string;
   autopilot: Autopilot;

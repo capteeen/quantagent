@@ -41,6 +41,8 @@ export interface FakeLlmOptions {
   candidates?: { name: string; ticker: string; lore: string; hook: string; trend: string }[];
   /** Throw on every call (kills the Ideator / Recruiter). */
   fail?: Error;
+  /** Awaited before each reply (or before `fail` is thrown): lets a test time the LLM's death against other events. */
+  gate?: (call: { system: string; user: string; n: number }) => Promise<void>;
 }
 
 export const DEFAULT_CANDIDATES = [
@@ -59,6 +61,7 @@ export function fakeLlm(opts: FakeLlmOptions = {}): FakeLlm {
     calls,
     async complete(input) {
       calls.push({ system: input.system, user: input.user });
+      await opts.gate?.({ system: input.system, user: input.user, n: calls.length });
       if (opts.fail) throw opts.fail;
       const sys = input.system;
       let json: unknown;
@@ -284,13 +287,31 @@ export interface FakeHosting extends HostingClient {
   publishes: { slug: string; html: string; assets?: { path: string; url: string }[] }[];
 }
 
-export function fakeHosting(opts: { fail?: Error } = {}): FakeHosting {
+export interface FakeHostingOptions {
+  /** Throw on every publish. */
+  fail?: Error;
+  /** Throw on one publish: called with the input and the 1-based attempt number (failed attempts count). */
+  failFor?: (input: { slug: string; html: string }, attempt: number) => Error | undefined;
+  /** Delay before a publish resolves, per attempt (a slow edge deploy). */
+  delayMs?: (input: { slug: string; html: string }, attempt: number) => number;
+  /** Awaited before a publish resolves: holds a deploy on the wire until the test says so. */
+  hold?: (input: { slug: string; html: string }, attempt: number) => Promise<void>;
+}
+
+export function fakeHosting(opts: FakeHostingOptions = {}): FakeHosting {
   const publishes: FakeHosting["publishes"] = [];
+  let attempts = 0;
   return {
     provider: "test-hosting",
     publishes,
     async publish(input) {
+      attempts += 1;
+      const delay = opts.delayMs?.(input, attempts) ?? 0;
+      if (delay > 0) await sleep(delay);
+      await opts.hold?.(input, attempts);
       if (opts.fail) throw opts.fail;
+      const why = opts.failFor?.(input, attempts);
+      if (why) throw why;
       publishes.push(input);
       return { url: `https://${input.slug}.quantagent.site`, deployId: `deploy-${publishes.length}` };
     },
@@ -319,12 +340,21 @@ export interface FakeQuantum extends QuantumClient {
   draws: { candidateIds: string[]; context: string }[];
 }
 
-export function fakeQuantum(opts: { provider?: string; selectedIndex?: number; fail?: Error } = {}): FakeQuantum {
+export interface FakeQuantumOptions {
+  provider?: string;
+  selectedIndex?: number;
+  fail?: Error;
+  /** Awaited before the draw answers: lets a test hold a collapse open while something else happens. */
+  gate?: (input: { candidateIds: string[]; context: string }) => Promise<void>;
+}
+
+export function fakeQuantum(opts: FakeQuantumOptions = {}): FakeQuantum {
   const draws: FakeQuantum["draws"] = [];
   return {
     draws,
     async draw(input) {
       draws.push({ candidateIds: [...input.candidateIds], context: input.context });
+      await opts.gate?.({ candidateIds: [...input.candidateIds], context: input.context });
       if (opts.fail) throw opts.fail;
       return fakeProof(opts.selectedIndex ?? 0, opts.provider);
     },
