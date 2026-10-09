@@ -1,6 +1,9 @@
 /**
  * B4 LAUNCHER
- * Waits for Ideator.named and Artist.logoReady (either order), then:
+ * Waits for Ideator.named and Artist.logoReady (either order). The wait also ends when
+ * the producer of a missing input dies (Worker.failed of the Ideator before the name,
+ * of the Artist before the logo, or Launch.failed): the Launcher then fails with that
+ * reason instead of hanging the launch. Then:
  *   1. QSD sequence via ctx.clients.solana.qsdLaunch — OUT OF SCOPE by the user's
  *      decision: when the client throws NotImplemented the stage is skipped with
  *      Worker.progress { step: "qsd-skipped" } and the launch continues on pump.fun
@@ -40,6 +43,8 @@ export class LauncherWorker implements Worker {
   private xUrl: string | undefined;
   private stopped = false;
   private wake: (() => void) | undefined;
+  /** Set when a missing input can never arrive (its producer failed). */
+  private inputFailure: string | undefined;
 
   async start(ctx: WorkerContext): Promise<StartResult> {
     const solana = requireClient(ctx, "solana", "Launcher.deploy");
@@ -153,9 +158,23 @@ export class LauncherWorker implements Worker {
       case "Voice.posted":
         if (event.payload.kind === "thread" && !this.xUrl) this.xUrl = event.payload.url;
         return;
+      case "Worker.failed":
+        if (event.worker === "Ideator" && !this.identity) this.inputGone(`Ideator failed before naming the coin: ${event.payload.reason}`);
+        else if (event.worker === "Artist" && !this.logo) this.inputGone(`Artist failed before a logo was ready: ${event.payload.reason}`);
+        return;
+      case "Launch.failed":
+        if (!this.identity || !this.logo) this.inputGone(`launch failed before the inputs were ready: ${event.payload.reason}`);
+        return;
       default:
         return;
     }
+  }
+
+  /** A missing input will never arrive: end the wait with the reason. */
+  private inputGone(reason: string): void {
+    if (this.inputFailure) return;
+    this.inputFailure = reason;
+    this.wake?.();
   }
 
   async stop(): Promise<void> {
@@ -170,6 +189,12 @@ export class LauncherWorker implements Worker {
           ctx.signal.removeEventListener("abort", onAbort);
           this.wake = undefined;
           resolve();
+          return true;
+        }
+        if (this.inputFailure) {
+          ctx.signal.removeEventListener("abort", onAbort);
+          this.wake = undefined;
+          reject(new Error(this.inputFailure));
           return true;
         }
         return false;

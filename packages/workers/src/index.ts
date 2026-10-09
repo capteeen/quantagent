@@ -84,7 +84,6 @@ export {
   type TradeDecision,
   type PriceSample,
 } from "./trader/decide";
-export { waitForDeployed, LauncherFailed } from "./trader/launchGate";
 
 // Shield
 export { ShieldWorker, type ShieldOptions } from "./shield/shield";
@@ -95,7 +94,7 @@ export { RecruiterWorker, REPLY_MAX_CHARS, type RecruiterOptions } from "./recru
 export { recruitScore, rankAccounts, RateWindow, hourlyCapFromEnv, DEFAULT_HOURLY_CAP } from "./recruiter/rank";
 
 // Shared helpers
-export { CLIENT_NEEDS, requireClient, findBase58Addresses, isBase58Address, slugify } from "./shared";
+export { CLIENT_NEEDS, requireClient, findBase58Addresses, isBase58Address, slugify, waitForDeployed, LauncherFailed, launcherFailureOf } from "./shared";
 
 import { createArtist } from "./artist/artist";
 import { createBuilder } from "./builder/builder";

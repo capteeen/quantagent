@@ -8,10 +8,10 @@ import { esc } from "./template";
 
 export const OG_PATH = "og.svg";
 
-export function renderOgSvg(input: { identity?: Identity; logo?: ImageAsset; pending: boolean }): string {
+export function renderOgSvg(input: { identity?: Identity; logo?: ImageAsset; pending: boolean; failed?: boolean }): string {
   const name = input.identity?.name ?? "quantagent launch";
   const ticker = input.identity ? `$${input.identity.ticker}` : "identity undetermined";
-  const status = input.pending ? "CA: pending launch" : "live on pump.fun";
+  const status = input.failed ? "launch failed: no contract address" : input.pending ? "CA: pending launch" : "live on pump.fun";
   const logo = input.logo
     ? `<image href="${esc(input.logo.url)}" x="80" y="135" width="360" height="360" preserveAspectRatio="xMidYMid slice" clip-path="url(#r)"/>`
     : `<rect x="80" y="135" width="360" height="360" rx="48" fill="#0B0F14" stroke="rgba(255,255,255,0.1)"/>`;
@@ -24,7 +24,7 @@ ${logo}
 <g font-family="JetBrains Mono, ui-monospace, Menlo, monospace" fill="#E8ECF1">
 <text x="500" y="270" font-size="64" font-weight="700">${esc(name)}</text>
 <text x="500" y="340" font-size="40" fill="#4DD0E1">${esc(ticker)}</text>
-<text x="500" y="410" font-size="24" fill="${input.pending ? "#FFB300" : "#7CFF6B"}">${esc(status)}</text>
+<text x="500" y="410" font-size="24" fill="${input.failed ? "#FF3B30" : input.pending ? "#FFB300" : "#7CFF6B"}">${esc(status)}</text>
 <text x="500" y="470" font-size="18" fill="#8A94A6">quantagent.fun · chosen by a verifiable quantum draw</text>
 </g>
 </svg>`;

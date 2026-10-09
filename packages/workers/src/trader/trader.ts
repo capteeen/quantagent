@@ -9,7 +9,7 @@
 import { ApprovalDenied, NotImplemented, type EventOf, type QuantagentEvent } from "@quantagent/core/types";
 import type { SolanaClient } from "@quantagent/core/types/clients";
 import type { PostLaunchWorker, StartResult, WorkerContext } from "../context";
-import { errorText, requireClient } from "../shared";
+import { errorText, launcherFailureOf, requireClient, waitForDeployed } from "../shared";
 import {
   assertSameCoin,
   decide,
@@ -21,7 +21,6 @@ import {
   type TraderConfig,
   type TraderState,
 } from "./decide";
-import { waitForDeployed } from "./launchGate";
 
 /**
  * Price source for the launch coin. SolanaClient has no quote method, so the
@@ -51,6 +50,8 @@ export class TraderWorker implements PostLaunchWorker {
   private readonly now: () => number;
   private coinCa: string | null = null;
   private deployed: EventOf<"Launcher.deployed">["payload"] | null = null;
+  /** The Launcher's failure reason, recorded from on() so a late wait never misses it. */
+  private launcherFailure: string | null = null;
   private devBuy: EventOf<"Launcher.devBuy">["payload"] | null = null;
   private liveAt: number | null = null;
   private lastBuyAt: number | null = null;
@@ -85,7 +86,7 @@ export class TraderWorker implements PostLaunchWorker {
       solBudget: ctx.budget.sol,
     });
 
-    const deployed = await waitForDeployed(ctx, () => this.deployed);
+    const deployed = await waitForDeployed(ctx, () => this.deployed, () => this.launcherFailure);
     this.bind(ctx, deployed);
 
     if (ctx.options.devBuySol > 0 && !this.devBuy) {
@@ -111,6 +112,7 @@ export class TraderWorker implements PostLaunchWorker {
   }
 
   on(event: QuantagentEvent, ctx: WorkerContext): void {
+    this.launcherFailure ??= launcherFailureOf(event);
     switch (event.type) {
       case "Launcher.deployed":
         this.bind(ctx, event.payload);

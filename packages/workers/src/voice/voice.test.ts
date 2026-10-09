@@ -5,7 +5,7 @@ import type { ImageAsset } from "@quantagent/core/types";
 import type { XPost } from "@quantagent/core/types/clients";
 import { FAKE_CA, fakeLlm, fakePost, fakeX, harness, type Harness } from "../testing/fakes";
 import { MemoryPostedTextStore, normalizeText } from "./dedup";
-import { CA_PENDING_LINE, buildCaPost, buildThreadDraft, finalizeCaText, pumpFunUrl } from "./drafts";
+import { CA_PENDING_LINE, buildCaPost, buildThreadDraft, finalizeCaText, pumpFunUrl, refreshSiteUrl } from "./drafts";
 import { VoiceWorker } from "./voice";
 
 const identity = { name: "Schrodinger Cat", ticker: "SCAT", lore: "A cat in a box, both alive and dead, runs a quantum lab.", hook: "the only cat that is already everywhere", trend: "quantum" };
@@ -50,7 +50,8 @@ function recordingX() {
 
 function feedLaunchInputs(h: Harness, images = 2): void {
   h.emit({ type: "Ideator.named", reason: "test", payload: { identity } });
-  h.emit({ type: "Builder.published", reason: "test", payload: { url: SITE, deployId: "d1", trigger: "t0" } });
+  // The Builder's republish after the name: the url now carries the ticker slug, so the thread may link it.
+  h.emit({ type: "Builder.published", reason: "test", payload: { url: SITE, deployId: "d2", trigger: "Ideator.named" } });
   for (let i = 1; i <= images; i++) h.emit({ type: "Artist.imageReady", reason: "test", payload: { asset: image(i) } });
 }
 
@@ -379,6 +380,83 @@ describe("VoiceWorker", () => {
     expect(note.reason).toMatch(/LLM_API_KEY/);
     expect(h.run.status).toBe("done");
     expect(h.ofType("Voice.posted").filter((e) => e.payload.kind === "reply")).toHaveLength(0);
+    await h.stop();
+  });
+});
+
+describe("the Voice links the LATEST site url, never the t0 placeholder (audit F3)", () => {
+  const T0 = "https://q-launch-test-0001.quantagent.site";
+  const MOVED = "https://scat.example.com";
+
+  it("refreshSiteUrl swaps a stale link, appends a missing one, and leaves a current one alone", () => {
+    expect(refreshSiteUrl(`hi\n${T0}`, T0, SITE)).toBe(`hi\n${SITE}`);
+    expect(refreshSiteUrl("hi", undefined, SITE)).toBe(`hi\n${SITE}`);
+    expect(refreshSiteUrl(`hi\n${SITE}`, SITE, SITE)).toBe(`hi\n${SITE}`);
+    expect(refreshSiteUrl(`hi\n${SITE}`, undefined, SITE)).toBe(`hi\n${SITE}`);
+    expect(refreshSiteUrl("hi", SITE, undefined)).toBe("hi");
+  });
+
+  it("holds the thread until the Builder republished after the name, then re-points the CA post on deploy", async () => {
+    const w = recordingX();
+    const h = harness(new VoiceWorker(), { clients: { x: w.x }, autopilot: { posts: true } });
+    const started = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Ideator.named", reason: "test", payload: { identity } });
+    h.emit({ type: "Builder.published", reason: "test", payload: { url: T0, deployId: "d1", trigger: "t0" } });
+    h.emit({ type: "Artist.imageReady", reason: "test", payload: { asset: image(1) } });
+    h.emit({ type: "Artist.imageReady", reason: "test", payload: { asset: image(2) } });
+    await h.settle();
+    expect(w.threads).toHaveLength(0); // the t0 page says "name undetermined": nobody is sent there
+
+    h.emit({ type: "Builder.published", reason: "test", payload: { url: SITE, deployId: "d2", trigger: "Ideator.named+Artist.logoReady" } });
+    await h.waitFor("Voice.posted", { predicate: (e) => e.payload.kind === "thread" });
+    const thread = w.threads[0]!.map((p) => p.text).join("\n");
+    expect(thread).toContain(SITE);
+    expect(thread).not.toContain(T0);
+
+    // The CA post was pre-drafted with SITE; the Builder moves once more (custom domain) before the deploy.
+    await h.waitFor("Worker.progress", { predicate: (e) => e.payload.step === "ca.draft" });
+    h.emit({ type: "Builder.published", reason: "test", payload: { url: MOVED, deployId: "d3", trigger: "Artist.bannerReady" } });
+    deploy(h);
+    expect(await started).toBe("done");
+    const ca = h.ofType("Voice.posted").find((e) => e.payload.kind === "ca")!.payload.text;
+    expect(ca).toContain(MOVED);
+    expect(ca).not.toContain(SITE);
+    expect(ca).not.toContain(T0);
+    expect(ca).toContain(`CA: ${FAKE_CA}`);
+    expect(ca).toContain(pumpFunUrl(FAKE_CA));
+    expect(h.ofType("Worker.progress").some((e) => e.payload.step === "ca.relinked")).toBe(true);
+    await h.stop();
+  });
+
+  it("a failed named republish or the deploy itself unblocks the thread with the url there is", async () => {
+    const w = recordingX();
+    const h = harness(new VoiceWorker(), { clients: { x: w.x }, autopilot: { posts: true } });
+    const started = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Ideator.named", reason: "test", payload: { identity } });
+    h.emit({ type: "Builder.published", reason: "test", payload: { url: T0, deployId: "d1", trigger: "t0" } });
+    h.emit({ type: "Artist.imageReady", reason: "test", payload: { asset: image(1) } });
+    h.emit({ type: "Artist.imageReady", reason: "test", payload: { asset: image(2) } });
+    h.emit({ type: "Builder.patchFailed", reason: "test", payload: { trigger: "Ideator.named", error: "host 500" } });
+    await h.waitFor("Voice.posted", { predicate: (e) => e.payload.kind === "thread" });
+    expect(w.threads[0]!.map((p) => p.text).join("\n")).toContain(T0);
+    deploy(h);
+    expect(await started).toBe("done");
+    await h.stop();
+  });
+
+  it("fails honestly when the Launcher died before the Voice reached its wait (no future event to race)", async () => {
+    const w = recordingX();
+    const h = harness(new VoiceWorker(), { clients: { x: w.x }, autopilot: { posts: true } });
+    const started = h.start();
+    await h.waitFor("Worker.progress");
+    feedLaunchInputs(h);
+    await h.waitFor("Worker.progress", { predicate: (e) => e.payload.step === "ca.draft" });
+    h.emit({ type: "Worker.failed", worker: "Launcher", reason: "deploy rejected", payload: { reason: "deploy rejected" } });
+    expect(await started).toBe("failed");
+    expect(h.ofType("Worker.failed").find((e) => e.worker === "Voice")!.reason).toMatch(/Launcher failed before deploying a coin: deploy rejected/);
+    expect(w.posts.filter((p) => /CA:/.test(p.text))).toEqual([]);
     await h.stop();
   });
 });

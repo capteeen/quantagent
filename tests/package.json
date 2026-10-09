@@ -1,0 +1,23 @@
+{
+  "name": "@quantagent/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent G: adversarial black-box verification of quantagent through the public package APIs only.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quantagent/core": "workspace:*",
+    "@quantagent/solana": "workspace:*",
+    "@quantagent/ui": "workspace:*",
+    "@quantagent/workers": "workspace:*",
+    "@quantagent/x": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

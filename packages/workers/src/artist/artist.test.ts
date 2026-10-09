@@ -173,3 +173,46 @@ describe("ArtistWorker", () => {
     await h.stop();
   });
 });
+
+describe("ArtistWorker when the Ideator dies before naming the coin (audit F2)", () => {
+  it("keeps the prompt-only logo it drew, skips the named set and finishes with the reason instead of waiting forever", async () => {
+    const image = fakeImage();
+    const store = memoryStore();
+    const h = harness(createArtist({ store, logoCandidates: 2, characterCount: 6 }), { prompt: "a cat that runs a quantum lab", clients: { image } });
+    const finished = h.start();
+    const cands = await h.waitFor("Worker.candidates");
+    // The Ideator dies while the draw is still pending: the rejection must survive until start() awaits the name.
+    h.emit({ type: "Worker.failed", worker: "Ideator", reason: "llm down", payload: { reason: "llm down" } });
+    h.collapse("Artist", 1);
+    expect(await finished).toBe("done");
+
+    expect(image.calls).toHaveLength(2); // nothing was generated after the name was lost
+    expect(h.ofType("Artist.logoReady")).toHaveLength(0);
+    expect(h.ofType("Artist.bannerReady")).toHaveLength(0);
+    expect(h.ofType("Artist.imageReady")).toHaveLength(0);
+    const note = h.ofType("Worker.progress").find((e) => e.payload.step === "named.unavailable")!;
+    expect(note.reason).toContain("Ideator failed before naming the coin: llm down");
+    const outputs = h.ofType("Worker.done")[0]!.payload.outputs as { logo: { url: string } | null; banner: unknown; images: unknown[]; incomplete: string | null };
+    expect(outputs.incomplete).toMatch(/Ideator failed before naming the coin: llm down/);
+    expect(outputs.logo?.url).toBe(cands.payload.candidates[1]!.thumbnailUrl); // the quantum-drawn prompt-only logo, never a stock image
+    expect(outputs.banner).toBeNull();
+    expect(outputs.images).toEqual([]);
+    expect(store.objects.size).toBe(2);
+    await h.stop();
+  });
+
+  it("an Ideator failure after the name is in changes nothing", async () => {
+    const image = fakeImage();
+    const h = harness(createArtist({ store: memoryStore(), logoCandidates: 2, characterCount: 6 }), { clients: { image } });
+    const finished = h.start();
+    await h.waitFor("Worker.candidates");
+    h.emit({ type: "Ideator.named", reason: "test", payload: { identity: IDENTITY } });
+    h.emit({ type: "Worker.failed", worker: "Ideator", reason: "angles crashed", payload: { reason: "angles crashed" } });
+    h.collapse("Artist");
+    expect(await finished).toBe("done");
+    expect(h.ofType("Artist.logoReady")).toHaveLength(1);
+    expect(h.ofType("Artist.imageReady")).toHaveLength(6);
+    expect((h.ofType("Worker.done")[0]!.payload.outputs as { incomplete: unknown }).incomplete).toBeNull();
+    await h.stop();
+  });
+});

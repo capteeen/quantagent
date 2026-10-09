@@ -8,6 +8,9 @@
  *   Artist.bannerReady → header
  *   Artist.imageReady  → gallery
  *   Launcher.deployed  → CA block, pump.fun buy button, chart embed
+ *   Launcher failed    → the "CA: pending launch" block becomes "launch failed: <reason>"
+ *                        (trigger "Launcher.failed"); the Builder then finishes instead
+ *                        of waiting forever, so the launch can report Launch.failed
  *   Voice.posted       → feed (announcement thread embed)
  *   Chain.milestone    → live stat strip
  *   Shield.copycatFound→ "verify the real CA" banner
@@ -19,7 +22,7 @@
 import type { QuantagentEvent } from "@quantagent/core/types";
 import type { HostingClient } from "@quantagent/core/types/clients";
 import type { StartResult, Worker, WorkerContext } from "../context";
-import { errorText, requireClient, slugify } from "../shared";
+import { LauncherFailed, errorText, requireClient, slugify, waitForDeployed } from "../shared";
 import { OG_PATH, ogDataUrl, renderOgSvg } from "./og";
 import { emptySiteState, render, type SiteState } from "./template";
 
@@ -36,6 +39,8 @@ export interface BuilderOutputs extends Record<string, unknown> {
   deploys: number;
   failures: number;
   coinCa: string | null;
+  /** Why no CA will ever reach the page (the Launcher's failure reason), or null. */
+  launchFailed: string | null;
 }
 
 const WORKER = "Builder" as const;
@@ -66,8 +71,10 @@ export class BuilderWorker implements Worker {
     const now = (this.opts.now ?? (() => new Date()))().toISOString();
     this.state = emptySiteState(ctx.launchId, ctx.prompt, now);
     this.slug = `q-${slugify(ctx.launchId)}`.slice(0, 24).replace(/-+$/, "");
-    // Subscribe before the first publish so a deploy during it is never missed.
-    const deployedP = ctx.waitFor("Launcher.deployed");
+    // Subscribe before the first publish so a deploy during it is never missed. The wait
+    // races the Launcher's failure (and Launch.failed / abort): a dead Launcher must never
+    // leave this worker, and with it the whole launch, hanging on an event that never comes.
+    const deployedP = waitForDeployed(ctx);
     deployedP.catch(() => undefined);
     ctx.progress("scaffold", `scaffolding the site from the prompt; CA block reads "pending launch" until the Launcher deploys`);
     await this.publish(ctx, hosting, "t0");
@@ -87,10 +94,31 @@ export class BuilderWorker implements Worker {
 
     // Stay "running" until the CA is on the page; post-launch patches continue through on().
     ctx.progress("await.deployed", "published; waiting for Launcher.deployed to patch the CA block");
-    const deployed = await deployedP;
-    await this.applyAndPublish(ctx, hosting, deployed);
-    const outputs: BuilderOutputs = { url: this.url, slug: this.slug, deploys: this.deploys, failures: this.failures, coinCa: this.state.launch?.coinCa ?? null };
-    return outputs;
+    try {
+      const deployed = await deployedP;
+      this.state.launch = { coinCa: deployed.coinCa, txSignature: deployed.txSignature, cluster: ctx.options.cluster };
+      await this.publish(ctx, hosting, "Launcher.deployed");
+    } catch (err) {
+      if (!(err instanceof LauncherFailed)) throw err;
+      // No coin will ever come: say so on the page instead of "pending launch" forever, then finish.
+      this.state.launchFailed = err.launcherReason;
+      ctx.progress("launch.failed", `Launcher failed before deploying (${err.launcherReason}); replacing "CA: pending launch" with the failure on the page`, {
+        reason: err.launcherReason,
+      });
+      await this.publish(ctx, hosting, "Launcher.failed");
+    }
+    return this.outputs();
+  }
+
+  private outputs(): BuilderOutputs {
+    return {
+      url: this.url as string,
+      slug: this.slug,
+      deploys: this.deploys,
+      failures: this.failures,
+      coinCa: this.state.launch?.coinCa ?? null,
+      launchFailed: this.state.launchFailed ?? null,
+    };
   }
 
   async on(event: QuantagentEvent, ctx: WorkerContext): Promise<void> {
@@ -124,9 +152,6 @@ export class BuilderWorker implements Worker {
       case "Artist.imageReady":
         s.gallery.push(event.payload.asset);
         return event.type;
-      case "Launcher.deployed":
-        s.launch = { coinCa: event.payload.coinCa, txSignature: event.payload.txSignature, cluster: s.launch?.cluster ?? "devnet" };
-        return event.type;
       case "Voice.posted":
         s.posts.push({ postId: event.payload.postId, url: event.payload.url, text: event.payload.text, kind: event.payload.kind });
         return event.type;
@@ -144,7 +169,6 @@ export class BuilderWorker implements Worker {
   private async applyAndPublish(ctx: WorkerContext, hosting: HostingClient, event: QuantagentEvent): Promise<void> {
     const trigger = this.apply(event);
     if (!trigger) return;
-    if (event.type === "Launcher.deployed") this.state.launch!.cluster = ctx.options.cluster;
     await this.publish(ctx, hosting, trigger);
   }
 
@@ -172,9 +196,15 @@ export class BuilderWorker implements Worker {
     const now = (this.opts.now ?? (() => new Date()))().toISOString();
     this.state.updatedAt = now;
     this.state.ogImagePath = OG_PATH;
-    const svg = renderOgSvg({ ...(this.state.identity ? { identity: this.state.identity } : {}), ...(this.state.logo ? { logo: this.state.logo } : {}), pending: !this.state.launch });
+    const caStatus = this.state.launch ? "CA live" : this.state.launchFailed ? "launch failed" : "CA pending";
+    const svg = renderOgSvg({
+      ...(this.state.identity ? { identity: this.state.identity } : {}),
+      ...(this.state.logo ? { logo: this.state.logo } : {}),
+      pending: !this.state.launch,
+      ...(this.state.launchFailed ? { failed: true } : {}),
+    });
     const html = render(this.state);
-    ctx.progress("publish", `publishing ${this.slug} (trigger ${trigger}, ${html.length} bytes, ${this.state.launch ? "CA live" : "CA pending"})`, { trigger, slug: this.slug });
+    ctx.progress("publish", `publishing ${this.slug} (trigger ${trigger}, ${html.length} bytes, ${caStatus})`, { trigger, slug: this.slug });
     try {
       const { url, deployId } = await hosting.publish({ slug: this.slug, html, assets: [{ path: OG_PATH, url: ogDataUrl(svg) }] });
       this.url = url;
@@ -182,7 +212,9 @@ export class BuilderWorker implements Worker {
       this.deploys++;
       ctx.emit({
         type: "Builder.published",
-        reason: `site published at ${url} (deploy ${deployId}) after ${trigger}${this.state.launch ? ` with CA ${this.state.launch.coinCa}` : "; CA pending launch"}`,
+        reason: `site published at ${url} (deploy ${deployId}) after ${trigger}${
+          this.state.launch ? ` with CA ${this.state.launch.coinCa}` : this.state.launchFailed ? "; launch failed, no CA" : "; CA pending launch"
+        }`,
         payload: { url, deployId, trigger },
       });
     } catch (err) {

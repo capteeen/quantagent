@@ -4,9 +4,12 @@
  * There is no other posting path in this folder (voice.test.ts greps for one).
  *
  * Launch: pre-drafts the announcement thread (hook, lore, site link, first two images)
- * the moment Ideator.named + Builder.published + two Artist.imageReady are in, then
- * pre-drafts the CA post with "CA: pending launch" and finalizes it on
- * Launcher.deployed, so each approval is one tap. Every post goes through
+ * the moment Ideator.named + the named site (the Builder.published that followed
+ * Ideator.named, i.e. the ticker slug rather than the t0 placeholder) + two
+ * Artist.imageReady are in, then pre-drafts the CA post with "CA: pending launch" and
+ * finalizes it on Launcher.deployed, so each approval is one tap. Every draft links
+ * the LATEST Builder.published url at the moment it is finalized; the CA post is
+ * re-pointed on deploy if the Builder moved in between. Every post goes through
  * requireApproval({ actionClass: "posts" }) ("edit" honoured, "skip" is not a failure)
  * and is logged as Voice.posted with its post id, or Voice.postFailed.
  * The same text is never posted twice (PostedTextStore, injectable).
@@ -20,9 +23,8 @@
 import { NotImplemented, type Copycat, type EventOf, type Identity, type ImageAsset, type QuantagentEvent } from "@quantagent/core/types";
 import type { XClient, XPost } from "@quantagent/core/types/clients";
 import type { PostLaunchWorker, StartResult, WorkerContext } from "../context";
-import { CLIENT_NEEDS, errorText, requireClient } from "../shared";
+import { CLIENT_NEEDS, LauncherFailed, errorText, launcherFailureOf, requireClient, waitForDeployed } from "../shared";
 import { addressesIn } from "../shield/match";
-import { LauncherFailed, waitForDeployed } from "../trader/launchGate";
 import { approvedText, askApproval } from "./approval";
 import { MemoryPostedTextStore, type PostedTextStore } from "./dedup";
 import {
@@ -36,6 +38,7 @@ import {
   clip,
   engagementOf,
   finalizeCaText,
+  refreshSiteUrl,
   tickerTag,
   type PostDraft,
 } from "./drafts";
@@ -118,9 +121,14 @@ export class VoiceWorker implements PostLaunchWorker {
 
   // launch inputs
   private identity: Identity | null = null;
+  /** The latest Builder.published url; the Builder moves from the t0 slug to the ticker slug. */
   private siteUrl: string | null = null;
+  /** True once the Builder published (or failed to) after Ideator.named: the url carries the name. */
+  private siteNamed = false;
   private readonly images: ImageAsset[] = [];
   private deployed: EventOf<"Launcher.deployed">["payload"] | null = null;
+  /** The Launcher's failure reason, recorded from on() so a late wait never misses it. */
+  private launcherFailure: string | null = null;
   private liveAt: number | null = null;
   private artistFailed = false;
   private builderFailed = false;
@@ -161,7 +169,7 @@ export class VoiceWorker implements PostLaunchWorker {
     ctx.signal.addEventListener("abort", () => this.launchDone.reject(ctx.signal.reason ?? new Error("Voice aborted")), { once: true });
     this.maybeStartFlow(ctx);
     try {
-      await waitForDeployed(ctx, () => this.deployed);
+      await waitForDeployed(ctx, () => this.deployed, () => this.launcherFailure);
     } catch (err) {
       if (err instanceof LauncherFailed) {
         this.launchDone.reject(err);
@@ -173,6 +181,7 @@ export class VoiceWorker implements PostLaunchWorker {
   }
 
   on(event: QuantagentEvent, ctx: WorkerContext): Promise<void> | void {
+    this.launcherFailure ??= launcherFailureOf(event);
     switch (event.type) {
       case "Ideator.named":
         this.identity = event.payload.identity;
@@ -183,10 +192,14 @@ export class VoiceWorker implements PostLaunchWorker {
         ctx.progress("angles", `Ideator sent ${this.angles.length} new angle(s) for the next posts`, { angles: this.angles });
         return;
       case "Builder.published":
-        if (!this.siteUrl) {
-          this.siteUrl = event.payload.url;
-          this.maybeStartFlow(ctx);
-        }
+        this.siteUrl = event.payload.url;
+        if (event.payload.trigger.split("+").includes("Ideator.named")) this.siteNamed = true;
+        this.maybeStartFlow(ctx);
+        return;
+      case "Builder.patchFailed":
+        // The named republish failed: the url we have is the best there will be.
+        if (event.payload.trigger.split("+").includes("Ideator.named")) this.siteNamed = true;
+        this.maybeStartFlow(ctx);
         return;
       case "Artist.imageReady":
         this.images.push(event.payload.asset);
@@ -203,6 +216,7 @@ export class VoiceWorker implements PostLaunchWorker {
         return;
       case "Launch.live":
         if (this.liveAt === null) this.liveAt = this.now();
+        this.siteUrl = event.payload.siteUrl;
         return;
       case "Chain.milestone":
         return this.enqueue(() => this.postMilestone(ctx, event.payload));
@@ -240,7 +254,7 @@ export class VoiceWorker implements PostLaunchWorker {
   /* ───────────────────────────── launch flow ───────────────────────────── */
 
   private inputStatus(): Record<string, unknown> {
-    return { named: !!this.identity, site: !!this.siteUrl, images: this.images.length, deployed: !!this.deployed };
+    return { named: !!this.identity, site: !!this.siteUrl, siteNamed: this.siteNamed, images: this.images.length, deployed: !!this.deployed };
   }
 
   private tag(): string {
@@ -248,12 +262,14 @@ export class VoiceWorker implements PostLaunchWorker {
   }
 
   /**
-   * The thread is drafted as soon as it can carry everything (name + site + two images),
-   * or as soon as waiting would hold up the CA post (deployed, or Artist/Builder failed).
+   * The thread is drafted as soon as it can carry everything (name + the named site +
+   * two images), or as soon as waiting would hold up the CA post (deployed, or
+   * Artist/Builder failed). "Named site" = the Builder republished after Ideator.named,
+   * so the link is the ticker page, not the t0 placeholder.
    */
   private maybeStartFlow(ctx: WorkerContext): void {
     if (this.flowStarted || !this.identity) return;
-    const haveSite = !!this.siteUrl || this.builderFailed;
+    const haveSite = (!!this.siteUrl && (this.siteNamed || !!this.deployed)) || this.builderFailed;
     const haveImages = this.images.length >= 2 || this.artistFailed || !!this.deployed;
     if (!haveSite || !haveImages) return;
     if (!this.siteUrl && !this.deployed) return; // builder failed: still give the Artist time until deploy
@@ -337,7 +353,8 @@ export class VoiceWorker implements PostLaunchWorker {
 
   private async postCa(ctx: WorkerContext, x: XClient): Promise<void> {
     const identity = this.identity!;
-    const pending = buildCaPost({ identity, siteUrl: this.siteUrl ?? undefined, coinCa: this.deployed?.coinCa });
+    const draftedSiteUrl = this.siteUrl ?? undefined;
+    const pending = buildCaPost({ identity, siteUrl: draftedSiteUrl, coinCa: this.deployed?.coinCa });
     const known = !!this.deployed;
     ctx.progress(
       "ca.draft",
@@ -354,9 +371,14 @@ export class VoiceWorker implements PostLaunchWorker {
       ctx.progress("ca.skipped", "user skipped the CA post", { approvalId: gate.approvalId });
       return;
     }
-    const deployed = await waitForDeployed(ctx, () => this.deployed);
+    const deployed = await waitForDeployed(ctx, () => this.deployed, () => this.launcherFailure);
     this.deployed ??= deployed;
-    const text = finalizeCaText(approvedText(gate, pending.text), deployed.coinCa);
+    // Finalize against the LATEST site url: the Builder may have moved to the ticker slug since the draft.
+    const latestSiteUrl = this.siteUrl ?? undefined;
+    const text = finalizeCaText(refreshSiteUrl(approvedText(gate, pending.text), draftedSiteUrl, latestSiteUrl), deployed.coinCa);
+    if (draftedSiteUrl !== latestSiteUrl) {
+      ctx.progress("ca.relinked", `CA post re-pointed from ${draftedSiteUrl ?? "no site link"} to the latest site url ${latestSiteUrl}`, { from: draftedSiteUrl ?? null, to: latestSiteUrl ?? null });
+    }
     const foreign = addressesIn(text).filter((a) => a !== deployed.coinCa);
     if (foreign.length) {
       const error = `refusing to post: the draft contains an address that is not the deployed CA (${foreign.join(", ")})`;

@@ -11,8 +11,7 @@
 import type { BundleFlag, Copycat, EventOf, Identity, QuantagentEvent, ShieldReport } from "@quantagent/core/types";
 import type { SolanaClient, XClient } from "@quantagent/core/types/clients";
 import type { PostLaunchWorker, StartResult, WorkerContext } from "../context";
-import { errorText, requireClient } from "../shared";
-import { waitForDeployed } from "../trader/launchGate";
+import { errorText, launcherFailureOf, requireClient, waitForDeployed } from "../shared";
 import { buildReport, copycatKey, extractKeywords, postToCopycat, weakenKeywordMatch } from "./match";
 
 export interface ShieldOptions {
@@ -34,6 +33,8 @@ export class ShieldWorker implements PostLaunchWorker {
   private logoPhash: string | null = null;
   private canonicalCa: string | null = null;
   private deployed: EventOf<"Launcher.deployed">["payload"] | null = null;
+  /** The Launcher's failure reason, recorded from on() so a late wait never misses it. */
+  private launcherFailure: string | null = null;
   private readonly copycats = new Map<string, Copycat>();
   private readonly bundleFlags: BundleFlag[] = [];
   private unwatch: (() => void) | null = null;
@@ -62,13 +63,14 @@ export class ShieldWorker implements PostLaunchWorker {
     }
     ctx.progress("scan.prompt.done", `${this.copycats.size} suspicious item(s) after the prompt scan; waiting for the name, the logo and the deploy`, { found: this.copycats.size });
 
-    await waitForDeployed(ctx, () => this.deployed);
+    await waitForDeployed(ctx, () => this.deployed, () => this.launcherFailure);
     await this.chain;
     const report = this.report();
     return { report, canonicalCa: report.canonicalCa, copycats: report.copycats.length, bundleFlags: report.bundleFlags.length };
   }
 
   on(event: QuantagentEvent, ctx: WorkerContext): Promise<void> | void {
+    this.launcherFailure ??= launcherFailureOf(event);
     switch (event.type) {
       case "Ideator.named": {
         this.identity = event.payload.identity;

@@ -73,6 +73,18 @@ export function buildCaPost(input: { identity: Identity; siteUrl?: string | unde
   return { text: lines.join("\n") };
 }
 
+/**
+ * Re-points a drafted text at the LATEST site url: the Builder starts at a t0 slug and
+ * moves to the ticker slug on Ideator.named, so a draft approved earlier may carry a
+ * link to the placeholder page. A text with no link yet gets the latest one appended.
+ */
+export function refreshSiteUrl(text: string, drafted: string | undefined, latest: string | undefined): string {
+  if (!latest || drafted === latest) return text;
+  if (drafted && text.includes(drafted)) return text.split(drafted).join(latest);
+  if (text.includes(latest)) return text;
+  return `${text.trimEnd()}\n${latest}`;
+}
+
 export function formatUsd(value: number): string {
   if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2).replace(/\.?0+$/, "")}B`;
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2).replace(/\.?0+$/, "")}M`;

@@ -4,7 +4,10 @@
  * directions → Worker.candidates (ctx.collapse) → the quantum draw picks one.
  * Once Ideator.named arrives the chosen style is re-rendered with the final name
  * → Artist.logoReady; then the banner (Artist.bannerReady) and 6–12 character
- * images (Artist.imageReady each) in the same style.
+ * images (Artist.imageReady each) in the same style. If the Ideator dies before
+ * naming the coin (its Worker.failed, or Launch.failed), the Artist keeps what it
+ * made from the prompt alone, records why the set is incomplete and finishes instead
+ * of waiting forever.
  *
  * Content rules run in code before every generation (rules.ts). Every output is
  * stored in object storage (storage.ts) and emitted as a public url with a pHash.
@@ -51,6 +54,8 @@ export interface ArtistOutputs extends Record<string, unknown> {
   images: ImageAsset[];
   failed: { brief: string; error: string }[];
   style: string;
+  /** Why the named logo / banner / character set never happened (the Ideator failed), or null. */
+  incomplete: string | null;
 }
 
 const WORKER = "Artist" as const;
@@ -70,6 +75,7 @@ export class ArtistWorker implements Worker {
   private stopped = false;
   private counter = 0;
   private namedResolve: ((i: Identity) => void) | undefined;
+  private namedReject: ((e: Error) => void) | undefined;
   private readonly named: Promise<Identity>;
 
   constructor(opts: ArtistOptions = {}) {
@@ -81,9 +87,17 @@ export class ArtistWorker implements Worker {
       ...(opts.fetch ? { fetch: opts.fetch } : {}),
     };
     this.store = opts.store;
-    this.named = new Promise<Identity>((resolve) => {
+    this.named = new Promise<Identity>((resolve, reject) => {
       this.namedResolve = resolve;
+      this.namedReject = reject;
     });
+    this.named.catch(() => undefined); // a name that never comes is handled in start()
+  }
+
+  /** The name will never arrive (Ideator failed, launch failed, or this worker aborted). */
+  private nameGone(reason: string): void {
+    if (this.identity) return;
+    this.namedReject?.(new Error(reason));
   }
 
   async start(ctx: WorkerContext): Promise<StartResult> {
@@ -126,7 +140,24 @@ export class ArtistWorker implements Worker {
 
     // 3. Re-render with the final name once the Ideator has it.
     ctx.progress("await.named", "waiting for Ideator.named to re-render the logo with the final name");
-    const identity = await this.named;
+    const onAbort = () => this.nameGone(ctx.signal.reason instanceof Error ? ctx.signal.reason.message : "Artist aborted while waiting for the name");
+    ctx.signal.addEventListener("abort", onAbort, { once: true });
+    let identity: Identity;
+    try {
+      identity = await this.named;
+    } catch (err) {
+      // No name will ever come: the prompt-only candidates are real generations, keep them and finish.
+      const reason = err instanceof Error ? err.message : String(err);
+      ctx.progress("named.unavailable", `no name will come (${reason}); finishing with the quantum-drawn prompt-only logo ${chosen.id}, no banner or character set`, {
+        reason,
+        candidateId: chosen.id,
+        candidates: candidates.map((c) => c.value.asset.url),
+      });
+      const outputs: ArtistOutputs = { logo: chosen.value.asset, banner: null, images: this.images, failed: [], style: this.style, incomplete: reason };
+      return outputs;
+    } finally {
+      ctx.signal.removeEventListener("abort", onAbort);
+    }
     this.identity = identity;
     let logo: ImageAsset;
     try {
@@ -175,7 +206,7 @@ export class ArtistWorker implements Worker {
     ];
     await mapConcurrent(jobs, this.opts.concurrency, (job) => job());
 
-    const outputs: ArtistOutputs = { logo, banner: this.banner ?? null, images: this.images, failed, style: this.style };
+    const outputs: ArtistOutputs = { logo, banner: this.banner ?? null, images: this.images, failed, style: this.style, incomplete: null };
     ctx.progress("set.done", `${this.images.length}/${briefs.length} character images, banner ${this.banner ? "ok" : "failed"}, ${failed.length} failures logged`);
     return outputs;
   }
@@ -189,6 +220,12 @@ export class ArtistWorker implements Worker {
       case "Ideator.named":
         this.identity = event.payload.identity;
         this.namedResolve?.(event.payload.identity);
+        return;
+      case "Worker.failed":
+        if (event.worker === "Ideator") this.nameGone(`Ideator failed before naming the coin: ${event.payload.reason}`);
+        return;
+      case "Launch.failed":
+        this.nameGone(`launch failed before the coin was named: ${event.payload.reason}`);
         return;
       case "Voice.needsImage":
       case "Builder.needsAsset": {

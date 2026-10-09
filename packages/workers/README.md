@@ -54,6 +54,7 @@ exactly that.
 | `checkContent`, `assertContentOk`, `checkIdentityConstraints` | content / identity rules (in code) |
 | `phashFromBytes`, `phashFromUrl`, `hammingDistance`, `phashSimilarity` | perceptual hash (DCT, 32×32 grayscale) |
 | `findBase58Addresses`, `isBase58Address` | "the CA is never wrong" helpers |
+| `waitForDeployed(ctx, already?, alreadyFailed?)`, `LauncherFailed`, `launcherFailureOf` | the launch gate (`src/shared.ts`): resolves with `Launcher.deployed` or throws `LauncherFailed` on the Launcher's `Worker.failed` / `Launch.failed`, so no worker ever waits forever for a coin that will not come. Feed `alreadyFailed` from `on()` when the wait starts late. Used by the Builder, Voice, Trader and Shield |
 
 The integrator wires clients into core's `ClientsInput`, e.g.
 `{ llm, x, solana, quantum, image: imageClientFromEnv(), hosting: hostingClientFromEnv() }`.
@@ -77,7 +78,10 @@ parallel lanes). Content rules (`rules.ts`: no real people, no protected charact
 brands, nothing sexual or violent) run in code before **every** provider call; the
 prompt itself is checked first. Every output goes through object storage and is
 emitted as a public url with a pHash. A failed generation emits
-`Artist.generationFailed` and is never replaced. Post-launch: `Voice.needsImage` /
+`Artist.generationFailed` and is never replaced. If the Ideator dies before naming the
+coin (its `Worker.failed`, or `Launch.failed`), the Artist keeps the quantum-drawn
+prompt-only logo, records why in `Worker.progress { step: "named.unavailable" }` and
+`outputs.incomplete`, and finishes instead of waiting. Post-launch: `Voice.needsImage` /
 `Builder.needsAsset` → one image.
 
 Providers (`src/artist/providers`, selected by `IMAGE_PROVIDER`): `openai`
@@ -98,7 +102,10 @@ buy button, dexscreener chart embed), `Voice.posted` (feed + announcement thread
 Publishes are serialized and coalesced; each emits `Builder.published { url, deployId,
 trigger }`, a failure emits `Builder.patchFailed { trigger, error }`. The OG image is an
 SVG (`og.svg`, logo + ticker) published as an asset next to the page. `start()` returns
-after the CA republish so `Worker.done` means "the real CA is on the site".
+after the CA republish so `Worker.done` means "the real CA is on the site". When the
+Launcher fails instead, the wait ends too: the Builder republishes once more (trigger
+`Launcher.failed`) with the CA block replaced by `launch failed: <reason>` (address-length
+tokens in the reason are masked) and finishes, so the launch can report `Launch.failed`.
 `createBuilder({ customDomain })` connects a user-owned domain through the provider's
 domains API after the first publish.
 
@@ -115,7 +122,9 @@ Note: X unfurls PNG/JPEG OG images most reliably; the SVG OG is what the spec as
 can be rasterized by the integrator later.
 
 ### Launcher (`src/launcher`)
-Waits for `Ideator.named` and `Artist.logoReady` (either order). Calls
+Waits for `Ideator.named` and `Artist.logoReady` (either order); if the Ideator dies
+before naming the coin or the Artist before a logo is ready (their `Worker.failed`, or
+`Launch.failed`), the Launcher fails with that reason instead of hanging. Calls
 `solana.qsdLaunch` inside `try`: when it throws `NotImplemented` (QSD is out of scope by
 the user's decision) it emits `Worker.progress { step: "qsd-skipped", detail: { reason } }`
 with reason `QSD protocol not linked; launching on pump.fun without the cryptographic

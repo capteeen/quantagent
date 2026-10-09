@@ -159,3 +159,24 @@ describe("ShieldWorker", () => {
     await h.stop();
   });
 });
+
+describe("Shield when the Launcher failed before the Shield reached its wait (audit F1 follow-up)", () => {
+  it("fails with 'Launcher failed' instead of waiting for an event that already happened", async () => {
+    let release!: () => void;
+    const gateP = new Promise<void>((r) => (release = r));
+    const solana = fakeSolana({
+      async findNameMatches() {
+        await gateP; // hold the prompt scan so the Launcher's failure lands before waitForDeployed is called
+        return [];
+      },
+    });
+    const h = harness(new ShieldWorker(), { prompt: "quantum cat", clients: { solana, x: fakeX() } });
+    const finished = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Worker.failed", worker: "Launcher", reason: "deploy rejected", payload: { reason: "deploy rejected" } });
+    release();
+    expect(await finished).toBe("failed");
+    expect(h.ofType("Worker.failed").find((e) => e.worker === "Shield")!.reason).toMatch(/Launcher failed before deploying a coin: deploy rejected/);
+    await h.stop();
+  });
+});

@@ -204,3 +204,69 @@ describe("BuilderWorker", () => {
     await h.stop();
   });
 });
+
+describe("BuilderWorker when the Launcher fails (audit F1)", () => {
+  it("replaces 'CA: pending launch' with an honest 'launch failed' block and finishes instead of waiting forever", async () => {
+    const hosting = fakeHosting();
+    const h = harness(createBuilder(), { prompt: "a cat that runs a quantum lab", clients: { hosting } });
+    const finished = h.start();
+    await h.waitFor("Builder.published");
+    h.emit({ type: "Ideator.named", reason: "t", payload: { identity: IDENTITY } });
+    await h.settle();
+    expect(hosting.publishes.at(-1)!.html).toContain("CA: pending launch");
+
+    // An address inside the failure text must never reach the page as if it were a CA.
+    const reason = `start() threw: NotImplemented: pump.fun deploy needs PUMPPORTAL_URL (agent wallet ${FAKE_CA})`;
+    h.emit({ type: "Worker.failed", worker: "Launcher", reason, payload: { reason } });
+    expect(await finished).toBe("done");
+
+    const pub = h.ofType("Builder.published").at(-1)!;
+    expect(pub.payload.trigger).toBe("Launcher.failed");
+    expect(pub.reason).toContain("launch failed");
+    const html = hosting.publishes.at(-1)!.html;
+    expect(html).toContain("launch failed: ");
+    expect(html).toContain("PUMPPORTAL_URL");
+    expect(html).toContain("[address]");
+    expect(html).not.toContain("CA: pending launch");
+    expect(html).not.toContain("pump.fun/coin/");
+    expect(html).toContain('class="dot failed"');
+    expect(findBase58Addresses(html)).toEqual([]);
+    expect(hosting.publishes.at(-1)!.assets?.[0]?.url).toBeDefined();
+    expect(h.ofType("Worker.progress").some((e) => e.payload.step === "launch.failed")).toBe(true);
+    expect(h.ofType("Worker.done")[0]!.payload.outputs).toMatchObject({ slug: "qcat", coinCa: null, launchFailed: reason, failures: 0 });
+    await h.stop();
+  });
+
+  it("gives up just the same when the failure arrives while the first publish is still in flight", async () => {
+    let release!: () => void;
+    const gateP = new Promise<void>((r) => (release = r));
+    const inner = fakeHosting();
+    const hosting = fakeHosting({
+      async publish(input) {
+        await gateP;
+        return inner.publish(input);
+      },
+    });
+    const h = harness(createBuilder(), { clients: { hosting } });
+    const finished = h.start();
+    await new Promise((r) => setTimeout(r, 5));
+    h.emit({ type: "Worker.failed", worker: "Launcher", reason: "deploy rejected", payload: { reason: "deploy rejected" } });
+    release();
+    expect(await finished).toBe("done");
+    expect(inner.publishes.map((p) => p.html.includes("launch failed: deploy rejected"))).toEqual([false, true]);
+    await h.stop();
+  });
+
+  it("template: the failed block renders without a CA, and the OG image says so", () => {
+    const s = emptySiteState("l", "p", "t");
+    s.identity = IDENTITY;
+    s.launchFailed = "Launcher failed: deploy rejected";
+    s.copycats.push({ source: "x", externalId: "p", url: "https://x.com/p", match: "ticker", score: 1, seenAt: "t" });
+    const html = render(s);
+    expect(html).toContain("launch failed: Launcher failed: deploy rejected");
+    expect(html).toContain("launch failed: no contract address");
+    expect(html).not.toContain("pending launch");
+    expect(findBase58Addresses(html)).toEqual([]);
+    expect(renderOgSvg({ identity: IDENTITY, pending: true, failed: true })).toContain("launch failed: no contract address");
+  });
+});

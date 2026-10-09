@@ -118,3 +118,51 @@ describe("LauncherWorker", () => {
     await h.bus.close();
   });
 });
+
+describe("LauncherWorker when a producer dies before its input is ready (audit F2)", () => {
+  it("fails with 'Ideator failed before naming the coin: <reason>' instead of waiting forever", async () => {
+    const h = harness(createLauncher(), { clients: { solana: fakeSolana() } });
+    const finished = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Artist.logoReady", reason: "test", payload: { asset: LOGO } });
+    h.emit({ type: "Worker.failed", worker: "Ideator", reason: "llm down", payload: { reason: "llm down" } });
+    expect(await finished).toBe("failed");
+    expect(h.ofType("Worker.failed").find((e) => e.worker === "Launcher")!.reason).toMatch(/Ideator failed before naming the coin: llm down/);
+    expect(h.ofType("Launcher.deployed")).toHaveLength(0);
+    await h.stop();
+  });
+
+  it("fails with 'Artist failed before a logo was ready' instead of waiting forever", async () => {
+    const h = harness(createLauncher(), { clients: { solana: fakeSolana() } });
+    const finished = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Ideator.named", reason: "test", payload: { identity: IDENTITY } });
+    h.emit({ type: "Worker.failed", worker: "Artist", reason: "provider refused", payload: { reason: "provider refused" } });
+    expect(await finished).toBe("failed");
+    expect(h.ofType("Worker.failed").find((e) => e.worker === "Launcher")!.reason).toMatch(/Artist failed before a logo was ready: provider refused/);
+    expect(h.ofType("Launcher.deployed")).toHaveLength(0);
+    await h.stop();
+  });
+
+  it("fails on Launch.failed while an input is still missing", async () => {
+    const h = harness(createLauncher(), { clients: { solana: fakeSolana() } });
+    const finished = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Launch.failed", reason: "stopped", payload: { reason: "stopped" } });
+    expect(await finished).toBe("failed");
+    expect(h.ofType("Worker.failed").find((e) => e.worker === "Launcher")!.reason).toMatch(/launch failed before the inputs were ready: stopped/);
+    await h.stop();
+  });
+
+  it("an Artist that dies after the logo is in does not stop the deploy", async () => {
+    const h = harness(createLauncher(), { clients: { solana: fakeSolana() } });
+    const finished = h.start();
+    await h.waitFor("Worker.progress");
+    h.emit({ type: "Artist.logoReady", reason: "test", payload: { asset: LOGO } });
+    h.emit({ type: "Worker.failed", worker: "Artist", reason: "banner failed", payload: { reason: "banner failed" } });
+    h.emit({ type: "Ideator.named", reason: "test", payload: { identity: IDENTITY } });
+    expect(await finished).toBe("done");
+    expect(h.ofType("Launcher.deployed")[0]!.payload.coinCa).toBe(FAKE_CA);
+    await h.stop();
+  });
+});

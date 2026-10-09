@@ -3,6 +3,8 @@
  * JetBrains Mono, inline CSS, no JS build. `render(state)` is pure: the same state
  * always gives the same HTML. Named blocks fill as events arrive; empty blocks render
  * honestly empty ("pending launch", "no images yet"), never with placeholder content.
+ * When the Launcher fails the CA block says "launch failed: <reason>" instead of
+ * pretending a CA is still coming.
  *
  * CA rule: the only contract address that can ever appear is `state.launch.coinCa`.
  * Every other string goes through `esc()`, and nothing else in the template is a
@@ -10,6 +12,7 @@
  */
 
 import type { Copycat, Identity, ImageAsset } from "@quantagent/core/types";
+import { findBase58Addresses } from "../shared";
 
 export interface SitePost {
   postId: string;
@@ -32,6 +35,8 @@ export interface SiteState {
   banner?: ImageAsset;
   gallery: ImageAsset[];
   launch?: SiteLaunch;
+  /** The Launcher's failure reason: no CA will ever come. Mutually exclusive with `launch`. */
+  launchFailed?: string;
   posts: SitePost[];
   milestones: { kind: "mcap" | "holders"; value: number; at: string }[];
   copycats: Copycat[];
@@ -49,6 +54,16 @@ export function emptySiteState(launchId: string, prompt: string, updatedAt: stri
 
 export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
+}
+
+/**
+ * A failure reason as shown on the page: escaped, and with any address-length base58
+ * token masked, so the only address the page can ever carry stays `launch.coinCa`.
+ */
+export function failureText(reason: string): string {
+  let text = reason;
+  for (const token of findBase58Addresses(reason)) text = text.split(token).join("[address]");
+  return esc(text);
 }
 
 export function pumpFunUrl(coinCa: string): string {
@@ -87,6 +102,7 @@ h1{font-size:26px;letter-spacing:-.02em;line-height:1.1}
 .dot{width:10px;height:10px;border-radius:50%;flex:none}
 .dot.pending{background:var(--amber);box-shadow:0 0 0 0 rgba(255,179,0,.6);animation:pulse 1.6s infinite}
 .dot.live{background:var(--live);box-shadow:0 0 12px rgba(124,255,107,.7)}
+.dot.failed{background:var(--warn);box-shadow:0 0 12px rgba(255,59,48,.6)}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,179,0,.6)}70%{box-shadow:0 0 0 12px rgba(255,179,0,0)}100%{box-shadow:0 0 0 0 rgba(255,179,0,0)}}
 .btn{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;background:var(--live);color:#06080A;font-weight:700;text-decoration:none!important}
 .btn.disabled{background:rgba(255,255,255,.08);color:var(--mute);cursor:not-allowed}
@@ -151,6 +167,9 @@ export function heroBlock(s: SiteState): string {
 }
 
 export function caBlock(s: SiteState): string {
+  if (!s.launch && s.launchFailed) {
+    return `<section class="glass warn" data-block="ca"><div class="label">Contract address</div><div class="ca"><span class="dot failed" title="failed"></span><code>launch failed: ${failureText(s.launchFailed)}</code></div><p class="empty">No coin was deployed, so there is no contract address. Anything claiming to be this coin's CA is not ours.</p></section>`;
+  }
   if (!s.launch) {
     return `<section class="glass" data-block="ca"><div class="label">Contract address</div><div class="ca"><span class="dot pending" title="live"></span><code>CA: pending launch</code></div><span class="btn disabled">Buy on pump.fun — pending launch</span></section>`;
   }
@@ -201,7 +220,7 @@ export function feedBlock(s: SiteState): string {
 
 export function copycatBanner(s: SiteState): string {
   if (s.copycats.length === 0) return "";
-  const ca = s.launch ? `<code>${s.launch.coinCa}</code>` : `<code>CA: pending launch</code>`;
+  const ca = s.launch ? `<code>${s.launch.coinCa}</code>` : s.launchFailed ? `<code>launch failed: no contract address</code>` : `<code>CA: pending launch</code>`;
   return `<section class="glass warn" data-block="copycat"><div class="label">Verify the real CA</div><p>${s.copycats.length} copycat${s.copycats.length === 1 ? "" : "s"} detected using this name, ticker or logo. The only real contract address is the one on this page:</p><div class="ca">${ca}</div></section>`;
 }
 
