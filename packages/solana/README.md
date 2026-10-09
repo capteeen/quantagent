@@ -10,7 +10,7 @@ const solana = await createSolanaClient({
   launchId,                      // one agent wallet per launch
   budgetSol: 0.5,                // hard cap on SOL the wallet may spend
   keyStore: new PgKeyStore(pool),// Postgres table agent_wallets (MemoryKeyStore for tests)
-  cluster: "devnet",             // default; "mainnet-beta" needs QUANTAGENT_MAINNET=true too
+  cluster: "mainnet-beta",       // the default; pass "devnet" (or SOLANA_CLUSTER=devnet) to test without real SOL
   hub,                           // shared WebhookHub when Helius webhooks are used
 });
 
@@ -24,7 +24,7 @@ const proof = await quantum.draw({ candidateIds, context: "Ideator:name" });
 | --- | --- |
 | `createSolanaClient(opts)` → `SolanaClientHandle` | `SolanaClient` plus `wallet`, `rpc`, `hub`, `webhookHandler` |
 | `createQuantumClient(opts?)` → `QuantumClient` | one verifiable draw per call, ANU QRNG by default |
-| `resolveCluster`, `rpcUrlFor`, `createConnection`, `MainnetRefused` | cluster gate + RPC selection |
+| `resolveCluster`, `rpcUrlFor`, `createConnection`, `UnknownCluster`, `DEFAULT_CLUSTER` | cluster selection + RPC selection |
 | `wallet/` `AgentWallet`, `KeyStore`, `MemoryKeyStore`, `PgKeyStore`, `encryptSecretKey`, `decryptSecretKey` | per-launch keypair, AES-256-GCM at rest, SOL budget on every signature |
 | `pumpfun/` `PumpFunLauncher`, `createBody`, `buyBody`, `sellBody`, `collectCreatorFeeBody`, `requestTradeLocal`, `PinataUploader`, `PumpFunIpfsUploader` | PumpPortal local-transaction API |
 | `discovery/` `CopycatFinder`, `phashImage`, `phashFromGray`, `hammingHex`, `searchCoins`, `recentCoins`, `getCoin` | pump.fun name/ticker/logo copycat search |
@@ -62,15 +62,15 @@ ANU's free tier is small (their site lists per-month request quotas; not verifie
 | Var | Used by | Meaning |
 | --- | --- | --- |
 | `AGENT_WALLET_KEY` | wallet | **required**; 32 bytes as 64 hex chars; AES-256-GCM key for secret keys at rest |
-| `QUANTAGENT_MAINNET` | cluster | `true` allows `cluster: "mainnet-beta"` when it is also passed explicitly; never flips the default |
-| `SOLANA_RPC_URL` | cluster | RPC endpoint; default `https://api.devnet.solana.com` (devnet) / `https://api.mainnet-beta.solana.com` (mainnet) |
+| `SOLANA_CLUSTER` | cluster | `mainnet-beta` (default) or `devnet`; anything else throws `UnknownCluster` |
+| `SOLANA_RPC_URL` | cluster | RPC endpoint; default `https://api.mainnet-beta.solana.com` (mainnet) / `https://api.devnet.solana.com` (devnet); use a paid RPC such as Helius in production |
 | `HELIUS_API_KEY` | cluster, anomalies, milestones | optional; selects Helius RPC when `SOLANA_RPC_URL` is unset, enables DAS holder counts and webhooks |
 | `HELIUS_WEBHOOK_URL` | anomalies | public URL Helius posts to (the app mounts `webhookHandler` there) |
 | `HELIUS_WEBHOOK_SECRET` | anomalies | sent as `authHeader`; the handler compares `Authorization` in constant time |
 | `HELIUS_WEBHOOK_API` | anomalies | override of `https://api.helius.xyz/v0/webhooks` |
 | `ANU_QRNG_API_KEY` | quantum | ANU Quantum Numbers API key |
 | `ANU_QRNG_API_URL` | quantum | override of `https://api.quantumnumbers.anu.edu.au/` |
-| `PUMPPORTAL_URL` | pumpfun | override of `https://pumpportal.fun/api/trade-local` (also unlocks devnet, see below) |
+| `PUMPPORTAL_URL` | pumpfun | override of `https://pumpportal.fun/api/trade-local` (a devnet-capable endpoint is the only devnet path, see below) |
 | `PUMPPORTAL_PRIORITY_FEE_SOL` | pumpfun | priority fee per tx, default `0.0005` |
 | `PUMPPORTAL_POOL` | pumpfun | `pool` for buy/sell, default `pump` |
 | `PINATA_JWT`, `PINATA_GATEWAY` | pumpfun | metadata/image host for token creation (what PumpPortal's current examples use) |
@@ -98,13 +98,13 @@ ANU's free tier is small (their site lists per-month request quotas; not verifie
 | `POST/DELETE https://api.helius.xyz/v0/webhooks` | anomaly webhooks | body field list and `webhookType` enum from the Helius API reference |
 | Helius RPC `getTokenAccounts` | holder counts | request/response fields from the Helius DAS reference |
 
-## Mainnet flag
+## Cluster
 
-Devnet is the default. Passing `cluster: "mainnet-beta"` without `QUANTAGENT_MAINNET=true` throws `MainnetRefused`; setting the env var without passing the cluster stays on devnet. A wallet created on one cluster refuses to open on the other.
+Mainnet-beta is the default, with no flag: pump.fun only exists there. Devnet is used only when asked for explicitly (`cluster: "devnet"` or `SOLANA_CLUSTER=devnet`); an unknown cluster name throws `UnknownCluster`. A wallet created on one cluster refuses to open on the other. Real SOL is protected by the per-launch SOL budget (`AgentWallet.signAndSend` refuses before signing), the approval gates on every trade beyond the dev buy, and per-coin autopilot opt-ins.
 
-## Devnet caveats (honest version)
+## Devnet caveats (only when devnet is requested)
 
-- **PumpPortal is mainnet-only.** Its FAQ: *"We currently don't provide APIs for devnet or testnet."* pump.fun publishes one program address (`6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`) with no devnet deployment we could verify. So on devnet `deployPumpFun` / `buy` / `sell` / `claimCreatorFees` throw `NotImplemented("pump.fun …", …, ["PUMPPORTAL_URL=…", "or QUANTAGENT_MAINNET=true with cluster \"mainnet-beta\""])`.
+- **PumpPortal is mainnet-only.** Its FAQ: *"We currently don't provide APIs for devnet or testnet."* pump.fun publishes one program address (`6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P`) with no devnet deployment we could verify. So on devnet `deployPumpFun` / `buy` / `sell` / `claimCreatorFees` throw `NotImplemented("pump.fun …", …, ["PUMPPORTAL_URL=…", "or the default cluster mainnet-beta (unset SOLANA_CLUSTER)"])`.
 - The devnet path, when you want one: run a devnet fork of the pump program plus a transaction builder with the same `trade-local` contract and point `PUMPPORTAL_URL` at it. Everything else (wallet, budget, balances, discovery against pump.fun's public API, anomaly polling via RPC, milestone polling) works on devnet as-is.
 - Helius webhooks use `webhookType: "enhancedDevnet"` on devnet.
 - The polling anomaly path derives token flows from `preTokenBalances`/`postTokenBalances`; the Helius path uses `tokenTransfers` from enhanced transactions.

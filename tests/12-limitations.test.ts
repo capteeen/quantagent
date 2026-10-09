@@ -1,7 +1,7 @@
 /**
  * §9 check 12: known honest limitations are surfaced, never swallowed.
  * - pump.fun has no devnet: on devnet deployPumpFun / buy / sell / claimCreatorFees throw
- *   NotImplemented naming PUMPPORTAL_URL and QUANTAGENT_MAINNET.
+ *   NotImplemented naming PUMPPORTAL_URL and the mainnet-beta default (devnet only when asked for).
  * - QSD stays NotImplemented (qsd-market not linked); the Launcher skips it with
  *   Worker.progress step "qsd-skipped" and says so on Launcher.deployed.
  * - mainnet is behind an explicit flag AND an explicit cluster.
@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { NotImplemented } from "@quantagent/core/types";
 import { launch, stopLaunch } from "@quantagent/core";
 import { QSD_SKIPPED_REASON, createWorkers } from "@quantagent/workers";
-import { MainnetRefused, createSolanaClient, loadQsd, resolveCluster, rpcUrlFor, type Rpc } from "@quantagent/solana";
+import { UnknownCluster, createSolanaClient, loadQsd, resolveCluster, rpcUrlFor, type Rpc } from "@quantagent/solana";
 import { fakeHosting, fakeImage, fakeLlm, fakeQuantum, fakeX, OWNER_WALLET, X_ACCOUNT_ID } from "./helpers/fakes";
 import { simulate, type Sim } from "./helpers/launch";
 
@@ -53,10 +53,10 @@ afterEach(async () => {
   sim = undefined;
 });
 
-describe("pump.fun on devnet is NotImplemented, loudly", () => {
-  it("deployPumpFun / buy / sell / claimCreatorFees throw NotImplemented naming PUMPPORTAL_URL and QUANTAGENT_MAINNET", async () => {
+describe("pump.fun on an explicitly requested devnet is NotImplemented, loudly", () => {
+  it("deployPumpFun / buy / sell / claimCreatorFees throw NotImplemented naming PUMPPORTAL_URL and the mainnet-beta default", async () => {
     const rpc = fakeRpc();
-    const client = await createSolanaClient({ launchId: "lim-1", budgetSol: 0.5, env: { ...WALLET_ENV }, rpc, fetch: async () => new Response("[]", { status: 200 }) });
+    const client = await createSolanaClient({ launchId: "lim-1", budgetSol: 0.5, cluster: "devnet", env: { ...WALLET_ENV }, rpc, fetch: async () => new Response("[]", { status: 200 }) });
     expect(client.cluster).toBe("devnet");
     const identity = { name: "Frostbyte", ticker: "FROST", lore: "l", hook: "h", trend: "none" };
     const calls = [
@@ -72,22 +72,21 @@ describe("pump.fun on devnet is NotImplemented, loudly", () => {
       expect(ni.capability).toMatch(/^pump\.fun/);
       expect(ni.because).toMatch(/mainnet only/);
       expect(ni.needs.join(" ")).toContain("PUMPPORTAL_URL");
-      expect(ni.needs.join(" ")).toContain("QUANTAGENT_MAINNET");
+      expect(ni.needs.join(" ")).toContain("mainnet-beta");
     }
     expect(rpc.sent).toBe(0);
   });
 
-  it("devnet stays the default; mainnet needs the flag AND the explicit cluster", () => {
-    expect(resolveCluster(undefined, {})).toBe("devnet");
-    expect(resolveCluster(undefined, { QUANTAGENT_MAINNET: "true" })).toBe("devnet");
-    expect(() => resolveCluster("mainnet-beta", {})).toThrow(MainnetRefused);
-    expect(() => resolveCluster("mainnet-beta", { QUANTAGENT_MAINNET: "false" })).toThrow(MainnetRefused);
-    expect(resolveCluster("mainnet-beta", { QUANTAGENT_MAINNET: "true" })).toBe("mainnet-beta");
+  it("mainnet-beta is the default with no flag; devnet only when asked for explicitly", () => {
+    expect(resolveCluster(undefined, {})).toBe("mainnet-beta");
+    expect(resolveCluster(undefined, { SOLANA_CLUSTER: "devnet" })).toBe("devnet");
+    expect(resolveCluster("devnet", {})).toBe("devnet");
+    expect(rpcUrlFor("mainnet-beta", {})).toContain("mainnet");
     expect(rpcUrlFor("devnet", {})).toContain("devnet");
   });
 
-  it("createSolanaClient refuses mainnet without the flag, before touching a wallet", async () => {
-    await expect(createSolanaClient({ launchId: "lim-2", budgetSol: 0.5, cluster: "mainnet-beta", env: { ...WALLET_ENV }, rpc: fakeRpc() })).rejects.toBeInstanceOf(MainnetRefused);
+  it("createSolanaClient refuses an unknown cluster before touching a wallet", async () => {
+    await expect(createSolanaClient({ launchId: "lim-2", budgetSol: 0.5, cluster: "testnet" as never, env: { ...WALLET_ENV }, rpc: fakeRpc() })).rejects.toBeInstanceOf(UnknownCluster);
   });
 
   it("without AGENT_WALLET_KEY no wallet is created: NotImplemented names the variable", async () => {
@@ -133,11 +132,12 @@ describe("QSD stays NotImplemented and the Launcher says so", () => {
   });
 });
 
-describe("the real solana client inside a real launch on devnet: the deploy limitation reaches the user as events", () => {
-  it("Launcher fails with the NotImplemented text (PUMPPORTAL_URL / QUANTAGENT_MAINNET) and the launch reports Launch.failed", async () => {
+describe("the real solana client inside a real launch on an explicit devnet: the deploy limitation reaches the user as events", () => {
+  it("Launcher fails with the NotImplemented text (PUMPPORTAL_URL / mainnet-beta) and the launch reports Launch.failed", async () => {
     const solana = await createSolanaClient({
       launchId: "lim-5",
       budgetSol: 0.5,
+      cluster: "devnet",
       env: { ...WALLET_ENV },
       rpc: fakeRpc(),
       fetch: async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
@@ -159,7 +159,7 @@ describe("the real solana client inside a real launch on devnet: the deploy limi
       expect(s.workers.Launcher.status).toBe("failed");
       expect(s.workers.Launcher.failReason).toContain("NotImplemented");
       expect(s.workers.Launcher.failReason).toContain("PUMPPORTAL_URL");
-      expect(s.workers.Launcher.failReason).toContain("QUANTAGENT_MAINNET");
+      expect(s.workers.Launcher.failReason).toContain("mainnet-beta");
       expect(s.coinCa).toBeUndefined();
       // The agent wallet is a real server-side keypair, exposed only by public key.
       expect(s.agentWallet).toBe(solana.agentWallet);
@@ -168,7 +168,7 @@ describe("the real solana client inside a real launch on devnet: the deploy limi
       await handle.bus.waitFor(handle.id, "Worker.failed", { predicate: (e) => e.worker === "Voice", timeoutMs: 5_000 });
       expect(x.posts.filter((p) => /CA:/.test(p.text))).toEqual([]);
       expect(handle.getState().workers.Voice.failReason).toMatch(/Launcher failed/);
-      // BLOCKING if this fails: on devnet (the default) every real launch ends here, and the Builder's
+      // BLOCKING if this fails: on an explicit devnet every real launch ends here, and the Builder's
       // wait for Launcher.deployed keeps the launch from ever reporting Launch.failed.
       const state = await Promise.race([handle.settled, new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
       expect(state, "the launch settles after the Launcher failed").not.toBeNull();

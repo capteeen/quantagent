@@ -97,8 +97,7 @@ interface LaunchRecord {
 
 export function clusterFromEnv(env: Env): Cluster {
   const raw = env["SOLANA_CLUSTER"]?.trim();
-  if (!raw) return "devnet";
-  return resolveCluster(raw as Cluster, env as Record<string, string | undefined>);
+  return resolveCluster(raw ? (raw as Cluster) : undefined, env as Record<string, string | undefined>);
 }
 
 export function newLaunchId(): string {
@@ -458,7 +457,7 @@ export class OrchestratorService {
       x,
       hosting: await this.hostingReport(),
       queue,
-      cost: costLine(this.env, cluster ?? "devnet"),
+      cost: costLine(this.env, cluster ?? "mainnet-beta"),
     };
     if (!clusterResult.ok) report.clusterError = clusterResult.error;
     return report;
@@ -474,7 +473,7 @@ export class OrchestratorService {
       notes.push("devnet: pump.fun create/buy/sell need PUMPPORTAL_URL pointed at a devnet trade-local endpoint (PumpPortal itself is mainnet-only)");
     }
     const rpc = this.env["SOLANA_RPC_URL"]?.trim() || (this.env["HELIUS_API_KEY"]?.trim() ? "helius" : "public default");
-    return { ok: true, detail: `${cluster ?? "devnet"} · rpc: ${rpc}`, notes };
+    return { ok: true, detail: `${cluster ?? "mainnet-beta"} · rpc: ${rpc}`, notes };
   }
 
   private async hostingReport(): Promise<HostingReport> {

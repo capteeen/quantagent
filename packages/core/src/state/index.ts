@@ -46,7 +46,7 @@ export function emptyLaunch(id: string): Launch {
     startedAt: "",
     agentWallet: "",
     autopilot: { ...DEFAULT_AUTOPILOT },
-    cluster: "devnet",
+    cluster: "mainnet-beta",
     workers,
   };
 }

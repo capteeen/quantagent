@@ -60,7 +60,7 @@ export interface Connections {
 export interface LaunchOptions {
   autopilot?: Partial<Autopilot>;
   budgets?: Partial<Record<WorkerName, Partial<Budget>>>;
-  /** devnet unless the integrator flips the mainnet flag. */
+  /** mainnet-beta by default; "devnet" only when asked for explicitly. */
   cluster?: "devnet" | "mainnet-beta";
   /** SOL for the dev buy at launch. */
   devBuySol?: number;

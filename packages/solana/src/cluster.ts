@@ -1,39 +1,39 @@
 /**
  * Cluster + RPC resolution.
  *
- * Devnet is the default. "mainnet-beta" is accepted only when BOTH hold:
- *   1. the caller passes cluster: "mainnet-beta" explicitly, and
- *   2. QUANTAGENT_MAINNET=true is set in the environment.
- * Either one alone is refused (MainnetRefused). The flag never flips the
- * default on its own, so a forgotten env var can never move real SOL.
+ * Mainnet-beta is the default: pump.fun only exists there. Devnet is used only
+ * when a caller asks for it explicitly (cluster: "devnet" or SOLANA_CLUSTER=devnet),
+ * for wallet, budget and watcher testing without real SOL. Real SOL is still
+ * protected by the per-launch SOL budget, the approval gates and autopilot opt-ins,
+ * not by the cluster choice.
  */
 
 import { Connection } from "@solana/web3.js";
-import { envFlag, envOf, type Env } from "./env";
+import { envOf, type Env } from "./env";
 
 export type Cluster = "devnet" | "mainnet-beta";
 
-export const MAINNET_FLAG = "QUANTAGENT_MAINNET";
+export const DEFAULT_CLUSTER: Cluster = "mainnet-beta";
 export const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 export const DEFAULT_MAINNET_RPC = "https://api.mainnet-beta.solana.com";
 
-export class MainnetRefused extends Error {
-  override readonly name = "MainnetRefused";
-  constructor(because: string) {
-    super(`mainnet-beta refused: ${because}`);
+export class UnknownCluster extends Error {
+  override readonly name = "UnknownCluster";
+  constructor(requested: string) {
+    super(`unknown cluster "${requested}" (expected "mainnet-beta" or "devnet")`);
   }
 }
 
+/**
+ * The explicit request wins, then SOLANA_CLUSTER, then mainnet-beta.
+ * Anything other than the two known clusters is refused rather than guessed.
+ */
 export function resolveCluster(requested: Cluster | undefined, env?: Env): Cluster {
   const e = envOf(env);
-  if (requested === undefined || requested === "devnet") return "devnet";
-  if (requested === "mainnet-beta") {
-    if (!envFlag(e, MAINNET_FLAG)) {
-      throw new MainnetRefused(`${MAINNET_FLAG}=true is not set (cluster "mainnet-beta" was requested explicitly)`);
-    }
-    return "mainnet-beta";
-  }
-  throw new MainnetRefused(`unknown cluster "${String(requested)}"`);
+  const raw = requested ?? (e.SOLANA_CLUSTER?.trim() || undefined);
+  if (raw === undefined) return DEFAULT_CLUSTER;
+  if (raw === "mainnet-beta" || raw === "devnet") return raw;
+  throw new UnknownCluster(String(raw));
 }
 
 /**

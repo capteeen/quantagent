@@ -85,7 +85,7 @@ export function WorkerSheet({
   onClose,
   collapseUnavailableReason,
   onPick,
-  cluster = "devnet",
+  cluster = "mainnet-beta",
 }: WorkerSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
 

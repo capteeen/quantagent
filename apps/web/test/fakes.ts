@@ -40,7 +40,7 @@ export function fakeLlm(): LlmClient {
 
 export function fakeSolana(launchId: string): SolanaClient {
   return {
-    cluster: "devnet",
+    cluster: "mainnet-beta",
     agentWallet: AGENT_WALLET,
     async qsdLaunch() {
       throw new NotImplemented("QSD protocol", "qsd-market is not linked in this workspace", []);

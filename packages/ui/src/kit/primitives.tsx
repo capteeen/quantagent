@@ -38,12 +38,12 @@ export function workerColor(name: WorkerName): string {
   return WORKER_COLORS[name];
 }
 
-export const explorerTxUrl = (sig: string, cluster: "devnet" | "mainnet-beta" = "devnet"): string =>
+export const explorerTxUrl = (sig: string, cluster: "devnet" | "mainnet-beta" = "mainnet-beta"): string =>
   `https://solscan.io/tx/${sig}${cluster === "devnet" ? "?cluster=devnet" : ""}`;
 
 export const explorerAccountUrl = (
   key: string,
-  cluster: "devnet" | "mainnet-beta" = "devnet",
+  cluster: "devnet" | "mainnet-beta" = "mainnet-beta",
 ): string => `https://solscan.io/account/${key}${cluster === "devnet" ? "?cluster=devnet" : ""}`;
 
 export const pumpFunUrl = (ca: string): string => `https://pump.fun/coin/${ca}`;

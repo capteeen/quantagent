@@ -30,23 +30,19 @@ Running `launch()` with the eight real workers and in-test fake clients:
   approval cards, user pick, autopilot toggles, launch/coin/me/status/how pages,
   the chamber mounted live, footer on every screen.
 
-## What is devnet-only, and the one thing that is not devnet at all
+## Cluster: mainnet by default
 
-Everything runs on devnet by default: agent wallets, budgets, the quantum draw,
-copycat scans, milestones, anomaly detection, site publishing, X posting.
+By your decision on 2026-10-09 everything targets Solana mainnet-beta by default, with no
+flag: the RPC, agent wallets, the pump.fun deploy and dev buy, Trader buys, Shield scans,
+anomaly detection, milestones, explorer links and the browser wallet adapter. Devnet is
+only used when asked for explicitly (`SOLANA_CLUSTER=devnet`), for testing wallets and
+watchers without real SOL; pump.fun has no devnet, so a deploy there fails with a clear
+`NotImplemented`.
 
-The exception is the pump.fun deploy itself. pump.fun has no devnet and PumpPortal's
-FAQ states mainnet only. On devnet `deployPumpFun` therefore throws a clear
-`NotImplemented` naming the two ways out:
-
-1. `PUMPPORTAL_URL` pointed at a devnet-capable endpoint that speaks the same
-   trade-local contract (for example a fork of pump.fun's program on devnet), or
-2. `QUANTAGENT_MAINNET=true` with cluster `mainnet-beta`, which is a real launch
-   with real SOL.
-
-The Launcher surfaces this as a worker failure with the reason; the Builder then
-publishes an honest "launch failed" block instead of a CA. So the spec's "real
-devnet coin" is not possible as written; a first real launch is a mainnet launch.
+Every spend safeguard is unchanged: the per-launch agent wallet has a hard SOL budget
+enforced before signing, every Trader buy beyond the dev buy needs your tap unless you
+enable trades autopilot for that coin, posts and outreach are gated the same way, and the
+agent wallet holds only what you fund it with.
 
 The QSD protocol (qsd-market) is out of scope by your instruction. The chain package
 keeps a declared boundary (`loadQsd()`) that reports itself unlinked; the Launcher
@@ -78,14 +74,13 @@ Copy `apps/web/.env.example` (every variable, grouped by package, with comments)
 and set at least these:
 
 ```
-# cluster
-QUANTAGENT_MAINNET=true
+# cluster (mainnet-beta is the default; these two lines are optional)
 SOLANA_CLUSTER=mainnet-beta
 NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta
-SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=...
+SOLANA_RPC_URL=https://mainnet.helius-rpc.com/?api-key=...   # a paid RPC; the public one rate-limits
 AGENT_WALLET_KEY=<64 hex chars>          # AES-256-GCM key for agent wallets
 LAUNCH_DEV_BUY_SOL=0.1
-TRADER_BUDGET_SOL=0.2
+TRADER_BUDGET_SOL=0.1
 
 # pump.fun via PumpPortal
 PINATA_JWT=...                           # token metadata upload
@@ -133,7 +128,22 @@ HELIUS_API_KEY=... HELIUS_WEBHOOK_URL=https://<host>/api/helius/webhook HELIUS_W
 | X API calls | ~12–20 | thread (3 posts, 2 media uploads), CA post, avatar + banner, shield and recruiter searches |
 | Hosting publishes | 6–10 | t=0, named, logo, images (coalesced), deployed, thread embed |
 | Solana RPC | tens | confirmations, balance reconcile, holder counts |
-| SOL | ~0.24 | 0.1 dev buy + two 0.05 support buys + create overhead (~0.03) + 0.5% PumpPortal fee + priority fees; pump.fun's ~1% curve fee on top |
+| SOL | ~0.13 at launch, up to ~0.23 | see the SOL breakdown below |
+
+### SOL for a first mainnet launch (defaults)
+
+| Item | SOL | When |
+| --- | --- | --- |
+| pump.fun create (mint rent, bonding-curve accounts, network fee) | ~0.02–0.03 | at launch |
+| Priority fee | 0.0005 per transaction | every transaction |
+| Dev buy (`LAUNCH_DEV_BUY_SOL`) | 0.1 | at launch, folded into the create transaction |
+| PumpPortal fee 0.5% + pump.fun curve fee ~1% on the dev buy | ~0.0015 | at launch |
+| **Spent at launch** | **~0.13** | |
+| Trader budget (`TRADER_BUDGET_SOL`) | up to 0.1 | later, only on approved support buys (or trades autopilot) |
+| **Agent wallet funding the app asks for** | **0.2305** | 0.0305 launch + 0.1 dev buy + 0.1 Trader budget |
+
+The dev buy buys the coin, so most of that 0.1 SOL sits in the agent wallet as tokens,
+not as a fee. Unspent Trader budget stays in the agent wallet.
 
 Hosting on Cloudflare Pages or Vercel fits their free tiers at this volume. The X
 Free tier allows posting but not search or mentions; the Basic tier is needed for

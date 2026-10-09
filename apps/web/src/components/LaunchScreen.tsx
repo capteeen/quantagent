@@ -104,7 +104,7 @@ export function LaunchScreen({ launchId, accountId, xError, logOpen = false }: L
   const approvals = useMemo(() => approvalsOf(events), [events]);
   const openApprovals = approvals.filter((a) => !a.resolved);
   const view = useMemo(() => (state ? coinView(state, events) : null), [state, events]);
-  const cluster = state?.cluster ?? status.data?.cluster ?? "devnet";
+  const cluster = state?.cluster ?? status.data?.cluster ?? "mainnet-beta";
 
   const decide = useCallback(
     async (approvalId: string, decision: ApprovalDecision, draft?: Record<string, unknown>) => {

@@ -199,7 +199,7 @@ describe("orchestrator service", () => {
     expect(res.status).toBe(200);
     const s = (await res.json()) as Record<string, unknown> & { providers: Record<string, { ok: boolean; needs?: string[]; detail?: string }>; cost: Record<string, number | string | string[]>; store: Record<string, string>; x: { ok: boolean }; queue: { launches: number }; hosting: { health: { ok: boolean } } };
     expect(Object.keys(s).sort()).toEqual(["at", "cluster", "cost", "hosting", "providers", "queue", "store", "x"]);
-    expect(s["cluster"]).toBe("devnet");
+    expect(s["cluster"]).toBe("mainnet-beta");
     expect(s.providers["llm"]?.ok).toBe(true);
     expect(s.providers["image"]?.ok).toBe(false);
     expect(s.providers["hosting"]?.needs).toEqual(["HOSTING_PROVIDER=cloudflare|vercel"]);
@@ -210,7 +210,7 @@ describe("orchestrator service", () => {
     expect(s.hosting.health.ok).toBe(false);
     expect(s.queue.launches).toBe(0);
     expect(s.cost["youPaySol"]).toBeCloseTo(0.03 + 0.0005 + 0.1 + 0.1, 6);
-    expect(s.cost["cluster"]).toBe("devnet");
+    expect(s.cost["cluster"]).toBe("mainnet-beta");
   });
 
   it("builds every shared client from an empty env as NotImplemented with the exact env vars", async () => {

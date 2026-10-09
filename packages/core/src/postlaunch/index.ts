@@ -83,7 +83,7 @@ function createRuntime(opts: PostLaunchOptions, redisUrl: string): PostLaunchRun
 
   const resolved: ResolvedLaunchOptions = {
     autopilot: { ...DEFAULT_AUTOPILOT, ...(opts.options.autopilot ?? {}) },
-    cluster: opts.options.cluster ?? "devnet",
+    cluster: opts.options.cluster ?? "mainnet-beta",
     devBuySol: opts.options.devBuySol ?? 0,
   };
   const gate = new ApprovalGate({ bus, getAutopilot: () => (opts.getAutopilot ? opts.getAutopilot() : resolved.autopilot) });

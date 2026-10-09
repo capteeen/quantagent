@@ -18,7 +18,7 @@ import { MemoryKeyStore, type KeyStore } from "./wallet/keystore";
 
 export interface CreateSolanaClientOptions {
   launchId: string;
-  /** devnet unless "mainnet-beta" is passed AND QUANTAGENT_MAINNET=true. */
+  /** mainnet-beta unless "devnet" is passed or SOLANA_CLUSTER=devnet. */
   cluster?: Cluster;
   /** Total SOL the agent wallet may spend over the launch's life. */
   budgetSol: number;

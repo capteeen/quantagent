@@ -16,7 +16,7 @@ export function statusFor(err: unknown): number {
   if (err instanceof NotImplemented) return 501;
   if (err instanceof NotFound) return 404;
   if (err instanceof BadRequest) return 400;
-  if (err instanceof Error && err.name === "MainnetRefused") return 400;
+  if (err instanceof Error && err.name === "UnknownCluster") return 400;
   return 500;
 }
 

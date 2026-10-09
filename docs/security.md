@@ -129,16 +129,22 @@ the post itself is correct, and the Builder's events are honest (`Builder.patchF
 (`packages/core/src/orchestrator/launch.ts:115-119`; `tests/05-x-account.test.ts:86`). A mis-wired
 caller can no longer post from account B while the state, the log and the UI say A.
 
-## 6. Mainnet flag
+## 6. Cluster: mainnet by default
 
-`resolveCluster` returns `mainnet-beta` only when the caller asked for it explicitly **and**
-`QUANTAGENT_MAINNET=true` (`packages/solana/src/cluster.ts:16-32`); either alone throws
-`MainnetRefused`. The default everywhere is devnet (`apps/web/src/server/service.ts:97`). An
-agent wallet created on one cluster refuses to sign on another. On devnet the pump.fun path is
-honestly `NotImplemented` naming `PUMPPORTAL_URL` / `QUANTAGENT_MAINNET`
-(`tests/12-limitations.test.ts`), so a devnet launch cannot accidentally move real SOL and
-cannot pretend to have deployed; and since F1 that honest failure now reaches the user as
-`Launch.failed` instead of a launch that never ends (`tests/12-limitations.test.ts:137`).
+By the owner's decision (2026-10-09) every launch targets **mainnet-beta by default, with no
+flag** (`packages/solana/src/cluster.ts` `DEFAULT_CLUSTER`; core, the web service, the wallet
+adapter and the UI explorer links default the same way). Devnet is used only when requested
+explicitly (`cluster: "devnet"` or `SOLANA_CLUSTER=devnet`); an unknown name throws
+`UnknownCluster` rather than guessing. The previous `QUANTAGENT_MAINNET` flag is gone.
+
+What still stands between a launch and real SOL, unchanged: the per-launch agent wallet's SOL
+budget (`AgentWallet.signAndSend` reserves atomically and throws `BudgetExceeded` before
+signing), the approval gate on every Trader buy beyond the dev buy and on every post and
+outreach (§2), and per-coin, per-class autopilot opt-ins. The agent wallet must be funded by the
+owner before anything can be spent, so an unfunded wallet fails the deploy honestly. An agent
+wallet created on one cluster refuses to sign on another. On an explicit devnet the pump.fun path
+is `NotImplemented` naming `PUMPPORTAL_URL` (`tests/12-limitations.test.ts`), and that failure
+reaches the user as `Launch.failed` (`tests/12-limitations.test.ts:137`).
 
 ## 7. Webhook authentication
 

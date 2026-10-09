@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { EventBus, type Worker } from "@quantagent/core";
 import type { Launch } from "@quantagent/core/types";
-import { MainnetRefused, MemoryKeyStore, WebhookHub, createHeliusWebhookHandler } from "@quantagent/solana";
+import { UnknownCluster, MemoryKeyStore, WebhookHub, createHeliusWebhookHandler } from "@quantagent/solana";
 import { createXRuntime } from "@quantagent/x";
 
 type SessionModule = typeof import("../apps/web/src/server/session");
@@ -47,10 +47,11 @@ describe.skipIf("reason" in web)("apps/web server layer", () => {
     expect(session.sessionSetCookie("acct-A", { ...ENV, NODE_ENV: "production" })).toMatch(/HttpOnly; SameSite=Lax; Secure$/);
   });
 
-  it("clusterFromEnv defaults to devnet and refuses mainnet without QUANTAGENT_MAINNET=true", () => {
-    expect(service.clusterFromEnv({})).toBe("devnet");
-    expect(() => service.clusterFromEnv({ SOLANA_CLUSTER: "mainnet-beta" })).toThrow(MainnetRefused);
-    expect(service.clusterFromEnv({ SOLANA_CLUSTER: "mainnet-beta", QUANTAGENT_MAINNET: "true" })).toBe("mainnet-beta");
+  it("clusterFromEnv defaults to mainnet-beta with no flag, honours an explicit devnet, refuses unknown names", () => {
+    expect(service.clusterFromEnv({})).toBe("mainnet-beta");
+    expect(service.clusterFromEnv({ SOLANA_CLUSTER: "mainnet-beta" })).toBe("mainnet-beta");
+    expect(service.clusterFromEnv({ SOLANA_CLUSTER: "devnet" })).toBe("devnet");
+    expect(() => service.clusterFromEnv({ SOLANA_CLUSTER: "mainnet" })).toThrow(UnknownCluster);
   });
 
   async function serviceWith(opts: { connected: string[]; webhookSecret?: string }) {

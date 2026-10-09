@@ -13,9 +13,10 @@ and its evidence tests now pass. Every package suite is green (core 37, x 75, so
 
 What cannot be verified in this container, honestly:
 
-- **A real pump.fun deploy / dev buy / trade** — devnet is `NotImplemented` by design; only the
-  error path ran with the real `createSolanaClient`. Mainnet needs `QUANTAGENT_MAINNET=true`, a
-  funded `AGENT_WALLET_KEY` and `PUMPPORTAL_URL`.
+- **A real pump.fun deploy / dev buy / trade** — mainnet-beta is the default since 2026-10-09
+  (no flag); no real launch was run (no keys, no funded wallet). Only the explicit-devnet error
+  path ran with the real `createSolanaClient`. A real launch needs `AGENT_WALLET_KEY`, a funded
+  agent wallet and `PINATA_JWT` for metadata.
 - **Real ANU QRNG, real X API, real Helius webhooks, real Cloudflare/Vercel hosting** — all fakes or
   canned HTTP; the ANU proof derivation, the X rate limiter and the webhook auth were checked
   against recorded responses only.
@@ -54,7 +55,7 @@ worker's step). Tests import only package index files.
 | 9 | Exceed every budget dimension one at a time → `Worker.budgetExceeded`, launch survives partial | `tests/09-budgets.test.ts`: tokens (Recruiter), apiCalls (Shield), deploys (Builder), sol (Trader) — each: one `budgetExceeded`, `Worker.failed`, provider never called, launch `partial`; **Launcher over its SOL budget: refused before the deploy and the launch now reports `Launch.failed`**; default SOL 0 for everyone but Trader/Launcher; `Worker.spent` matches state | **PASS (7/7)** — F1 FIXED | `09-budgets.test.ts:90` |
 | 10 | Replay: `rebuild(log)` toStrictEqual live state; chamber replay twice identical | `tests/10-replay.test.ts`: QSD "run" (67×16 chain steps on the log), autopilot flipped after; `rebuild` strict-equal, JSON round trip, dense `seq`, reducer purity, cursor resume, QSD stage counts; two chamber stores identical | PASS (7/7) | — |
 | 11 | Audit: Artist rules, Voice dedup, Recruiter cap, Builder triggers, X limiter | `tests/11-audit.test.ts`: `ContentRuleViolation` with 0 image calls; post-launch disallowed brief → `Artist.generationFailed`; every prompt passes `checkContent`; identical milestones → one post; `RECRUITER_HOURLY_CAP=2` → 2 posts + `Recruiter.capped`; every `Builder.published.trigger` names a preceding event; `createXRuntime` limiter: `x-rate-limit-reset`, `retry-after`, per-route buckets, `X_MONTHLY_CALL_BUDGET`, 403 | PASS (15/15) | — |
-| 12 | Honest limitations surfaced as events/errors, never swallowed | `tests/12-limitations.test.ts`: real `createSolanaClient` on devnet → `NotImplemented` naming `PUMPPORTAL_URL` / `QUANTAGENT_MAINNET`; `resolveCluster` matrix; mainnet refused; missing `AGENT_WALLET_KEY`; QSD `NotImplemented`; `qsd-skipped` step; **real client inside a real launch: Launcher fails with the exact text, Voice fails "Launcher failed", no CA posted, and `Launch.failed` is emitted** | **PASS (8/8)** — F1 FIXED | `12-limitations.test.ts:122,137` |
+| 12 | Honest limitations surfaced as events/errors, never swallowed | `tests/12-limitations.test.ts`: real `createSolanaClient` on an explicit devnet → `NotImplemented` naming `PUMPPORTAL_URL` / mainnet-beta; `resolveCluster` matrix (mainnet-beta default, devnet opt-in, unknown refused); missing `AGENT_WALLET_KEY`; QSD `NotImplemented`; `qsd-skipped` step; **real client inside a real launch: Launcher fails with the exact text, Voice fails "Launcher failed", no CA posted, and `Launch.failed` is emitted** | **PASS (8/8)** — F1 FIXED | `12-limitations.test.ts:122,137` |
 | + | apps/web server layer | `tests/13-web.test.ts`: signed session cookie, `clusterFromEnv`, launch XClient scoped to the session id via the real X runtime, never-connected id → no client, Helius webhook 401/400/200/501 | PASS (5/5) | — |
 
 Package suites, run unchanged this pass (`pnpm -r --filter "./packages/*" test`): core 37/37, x 75/75,

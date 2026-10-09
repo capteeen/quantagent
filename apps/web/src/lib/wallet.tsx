@@ -14,7 +14,7 @@ import {
   createDefaultWalletNotFoundHandler,
 } from "@solana-mobile/wallet-adapter-mobile";
 
-export const PUBLIC_CLUSTER = (process.env["NEXT_PUBLIC_SOLANA_CLUSTER"] === "mainnet-beta" ? "mainnet-beta" : "devnet") as "devnet" | "mainnet-beta";
+export const PUBLIC_CLUSTER = (process.env["NEXT_PUBLIC_SOLANA_CLUSTER"] === "devnet" ? "devnet" : "mainnet-beta") as "devnet" | "mainnet-beta";
 
 type MobileConfig = ConstructorParameters<typeof SolanaMobileWalletAdapter>[0];
 

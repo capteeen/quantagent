@@ -27,7 +27,7 @@ function buildLog(): { preDeploy: QuantagentEvent[]; full: QuantagentEvent[] } {
   const emit = (input: Parameters<EventBus["emit"]>[1]) => bus.emit(ID, input);
   const all: QuantagentEvent[] = [];
   bus.subscribe((e) => all.push(e), { launchId: ID });
-  emit({ type: "Launch.started", reason: "user tapped launch", payload: { prompt: "a coin about cats", workers: ["Ideator", "Artist", "Builder", "Launcher", "Voice", "Trader", "Shield", "Recruiter"], ownerWallet: OWNER_WALLET, xAccountId: X_ACCOUNT, agentWallet: AGENT_WALLET, autopilot: { posts: false, trades: false, recruiting: false }, cluster: "devnet" } });
+  emit({ type: "Launch.started", reason: "user tapped launch", payload: { prompt: "a coin about cats", workers: ["Ideator", "Artist", "Builder", "Launcher", "Voice", "Trader", "Shield", "Recruiter"], ownerWallet: OWNER_WALLET, xAccountId: X_ACCOUNT, agentWallet: AGENT_WALLET, autopilot: { posts: false, trades: false, recruiting: false }, cluster: "mainnet-beta" } });
   for (const w of ["Ideator", "Artist", "Builder", "Launcher", "Voice", "Trader", "Shield", "Recruiter"] as const) emit({ type: "Worker.started", worker: w, reason: "start", payload: {} });
   emit({ type: "Ideator.named", reason: "named", payload: { identity: IDENTITY } });
   emit({ type: "Artist.logoReady", reason: "logo", payload: { asset: LOGO } });
@@ -63,7 +63,7 @@ function stubFetch(events: QuantagentEvent[]) {
         return new Response(JSON.stringify({ meta: { id: ID, createdAt: "", clients: {}, postLaunch: { status: "pending", detail: "test" } }, state, pendingApprovals: [], seq: events.length, events }), { headers: { "content-type": "application/json" } });
       }
       if (url.includes("/api/me")) return new Response(JSON.stringify({ account: { accountId: X_ACCOUNT, handle: "cfcat" }, launches: [], wallets: [], pendingApprovals: [] }), { headers: { "content-type": "application/json" } });
-      if (url.includes("/api/status")) return new Response(JSON.stringify({ cluster: "devnet", cost: { cluster: "devnet", launchSol: 0.0305, devBuySol: 0.1, agentBudgetSol: 0.1, youPaySol: 0.2305, notes: [] } }), { headers: { "content-type": "application/json" } });
+      if (url.includes("/api/status")) return new Response(JSON.stringify({ cluster: "mainnet-beta", cost: { cluster: "mainnet-beta", launchSol: 0.0305, devBuySol: 0.1, agentBudgetSol: 0.1, youPaySol: 0.2305, notes: [] } }), { headers: { "content-type": "application/json" } });
       return new Response("{}", { headers: { "content-type": "application/json" } });
     }),
   );

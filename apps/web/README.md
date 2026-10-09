@@ -47,7 +47,7 @@ Every variable this package reads (`process.env`). `apps/web/.env.example` lists
 | `LLM_MODEL` | llm | optional, default `claude-sonnet-4-5` / `gpt-4o-mini` |
 | `SESSION_SECRET` | `src/server/session.ts` | HMAC key for `qa_session`; falls back to `X_TOKEN_KEY`; missing → `NotImplemented` |
 | `X_TOKEN_KEY` | session (fallback) | see `@quantagent/x` |
-| `SOLANA_CLUSTER` | `src/server/service.ts` | `devnet` (default) \| `mainnet-beta` (needs `QUANTAGENT_MAINNET=true`) |
+| `SOLANA_CLUSTER` | `src/server/service.ts` | `mainnet-beta` (default, no flag) \| `devnet` (explicit opt-in for testing) |
 | `NEXT_PUBLIC_SOLANA_CLUSTER` | `src/lib/wallet.tsx` | cluster the browser wallet adapter requests |
 | `LAUNCH_DEV_BUY_SOL` | `src/server/cost.ts` | optional dev buy, default `DEFAULT_DEV_BUY_SOL` (0.1) |
 | `TRADER_BUDGET_SOL` | cost | optional Trader budget, default `DEFAULT_BUDGETS.Trader.sol` |

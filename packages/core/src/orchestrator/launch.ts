@@ -71,7 +71,7 @@ const registry = new Map<string, LaunchHandle>();
 function resolveOptions(options: LaunchOptions): ResolvedLaunchOptions {
   return {
     autopilot: { ...DEFAULT_AUTOPILOT, ...(options.autopilot ?? {}) },
-    cluster: options.cluster ?? "devnet",
+    cluster: options.cluster ?? "mainnet-beta",
     devBuySol: options.devBuySol ?? 0,
   };
 }

@@ -17,8 +17,8 @@ export {
   DEFAULT_DEVNET_RPC,
   DEFAULT_MAINNET_RPC,
   explorerTxUrl,
-  MAINNET_FLAG,
-  MainnetRefused,
+  DEFAULT_CLUSTER,
+  UnknownCluster,
   resolveCluster,
   rpcUrlFor,
 } from "./cluster";

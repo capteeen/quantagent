@@ -74,7 +74,7 @@ export class PumpFunLauncher {
       throw new NotImplemented(
         capability,
         "PumpPortal serves mainnet only (its FAQ: \"We currently don't provide APIs for devnet or testnet\") and pump.fun has no official devnet deployment",
-        ["PUMPPORTAL_URL=<devnet-capable trade-local endpoint>", "or QUANTAGENT_MAINNET=true with cluster \"mainnet-beta\""],
+        ["PUMPPORTAL_URL=<devnet-capable trade-local endpoint>", "or the default cluster mainnet-beta (unset SOLANA_CLUSTER)"],
       );
     }
   }

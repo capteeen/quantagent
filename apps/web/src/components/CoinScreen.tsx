@@ -48,7 +48,7 @@ export function CoinScreen({ launchId, ca }: { launchId: string; ca: string }) {
   const state = entry?.state;
   const events = entry?.events ?? [];
   const view = useMemo(() => (state ? coinView(state, events) : null), [state, events]);
-  const cluster = state?.cluster ?? "devnet";
+  const cluster = state?.cluster ?? "mainnet-beta";
 
   if (!state || state.status === "created") {
     return <EmptyState title="Loading the launch log…" detail={entry?.connectionError ?? `stream: ${entry?.connection ?? "idle"}`} />;
