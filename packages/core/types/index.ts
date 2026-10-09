@@ -239,6 +239,8 @@ export type QuantagentEvent =
   | Base<"Launch.live", { coinCa: string; siteUrl: string }>
   | Base<"Launch.failed", { reason: string }>
   | Base<"Launch.partial", { failed: WorkerName[] }>
+  /** The user toggled a per-coin autopilot flag; logged so replay carries the gate state. */
+  | Base<"Launch.autopilotChanged", { autopilot: Autopilot }>
   | WorkerEvt<"Worker.started", Record<string, never>>
   | WorkerEvt<"Worker.progress", { step: string; detail?: Record<string, unknown> }>
   | WorkerEvt<"Worker.candidates", { candidates: Candidate[] }>
@@ -305,10 +307,9 @@ export type EventType = QuantagentEvent["type"];
 export type EventOf<T extends EventType> = Extract<QuantagentEvent, { type: T }>;
 
 /** What a worker provides when emitting: everything but the bus-assigned fields. */
-export type EmitInput<E extends QuantagentEvent = QuantagentEvent> = Omit<
-  E,
-  "id" | "launchId" | "at" | "seq"
->;
+export type EmitInput<E extends QuantagentEvent = QuantagentEvent> = E extends unknown
+  ? Omit<E, "id" | "launchId" | "at" | "seq">
+  : never;
 
 /* ───────────────────────────── ERRORS ───────────────────────────── */
 
@@ -341,5 +342,21 @@ export class ApprovalDenied extends Error {
   override readonly name = "ApprovalDenied";
   constructor(public readonly approvalId: string) {
     super(`approval ${approvalId} was skipped`);
+  }
+}
+
+/**
+ * Thrown by a scoped client (x.post / x.thread / solana.buy / solana.sell) when a
+ * worker calls it without a tapped approval or an enabled autopilot flag for the
+ * action class. The gate is enforced in core, not by worker discipline.
+ */
+export class ApprovalRequired extends Error {
+  override readonly name = "ApprovalRequired";
+  constructor(
+    public readonly worker: WorkerName,
+    public readonly actionClass: ActionClass,
+    public readonly method: string,
+  ) {
+    super(`${worker} called ${method} without approval: autopilot.${actionClass} is off and no approved request is pending`);
   }
 }
