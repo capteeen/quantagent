@@ -132,6 +132,18 @@ describe("orchestrator service", () => {
     expect(forged.status).toBe(400);
   });
 
+  it("refuses a launch on serverless hosting with a 501 that names the long-lived host it needs", async () => {
+    const svc = makeService({ env: { SESSION_SECRET: "test-secret", NODE_ENV: "test", VERCEL: "1" } });
+    const h = makeHandlers(async () => svc, () => ENV);
+    const res = await h.createLaunch(post("/api/launch", { prompt: "cats", ownerWallet: OWNER_WALLET }, cookieFor(X_ACCOUNT)));
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error: { name: string; message: string; needs?: string[] } };
+    expect(body.error.name).toBe("NotImplemented");
+    expect(body.error.message).toMatch(/Vercel serverless/);
+    expect(JSON.stringify(body.error)).toMatch(/long-lived Node server/);
+    await svc.stopAll();
+  });
+
   it("runs a launch whose X account is not connected: the Voice fails with the exact reason, the rest proceeds", async () => {
     const svc = makeService({ shared: fakeShared({ xConnected: [] }) });
     const h = makeHandlers(async () => svc, () => ENV);

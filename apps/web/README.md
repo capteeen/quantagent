@@ -55,9 +55,26 @@ Every variable this package reads (`process.env`). `apps/web/.env.example` lists
 | `DATABASE_URL` | `src/server/clients.ts` | Postgres for the agent wallet key store (`PgKeyStore`); unset → in-memory keys (lost on restart, said so on `/status`) |
 | `HELIUS_API_KEY`, `SOLANA_RPC_URL`, `PUMPPORTAL_URL`, `AGENT_WALLET_KEY` | status | only inspected for the `/status` solana health line; read for real by `@quantagent/solana` |
 | `NODE_ENV` | session, status | `production` marks cookies `Secure` |
+| `VERCEL`, `AWS_LAMBDA_FUNCTION_NAME`, `NETLIFY` | `src/server/service.ts` | set by the host; on serverless hosting a launch is refused with `NotImplemented` (it needs one long-lived process) and `/status` says so |
 | `PLAYWRIGHT_BROWSERS_PATH`, `PW_CHROMIUM_PATH`, `SKIP_E2E`, `E2E_PORT` | `scripts/e2e.mjs`, `playwright.config.ts` | test-only |
 
 The orchestrator also hands `process.env` to `@quantagent/core` (`DATABASE_URL`, `REDIS_URL`), `@quantagent/workers` (image + hosting providers), `@quantagent/x` and `@quantagent/solana`; their READMEs list those.
+
+## Deploy
+
+A launch runs for minutes to hours inside one Node process (the orchestrator, its eight
+workers, the post-launch loops and the SSE streams all share it). Serverless functions
+stop between requests, so:
+
+- **Long-lived Node host (Railway, Render, Fly.io, a VM)**: everything works. Install
+  from the repo root with `pnpm install --frozen-lockfile`, then
+  `pnpm --filter @quantagent/web build && pnpm --filter @quantagent/web start`.
+  Attach managed Postgres (`DATABASE_URL`) and Redis (`REDIS_URL`).
+- **Vercel ("Import project", Root Directory `apps/web`)**: `vercel.json` sets the
+  framework, install (`pnpm install --frozen-lockfile`) and build (`pnpm build`)
+  commands; keep "Include files outside the root directory" on. Pages, X connect,
+  wallet connect, `/status`, `/how`, `/coin` and `/me` work; creating a launch returns
+  501 `NotImplemented` naming the long-lived host it needs.
 
 ## Shape
 

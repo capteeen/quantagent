@@ -25,6 +25,7 @@ import {
   type Worker,
 } from "@quantagent/core";
 import {
+  NotImplemented,
   WORKER_NAMES,
   type ApprovalDecision,
   type ApprovalRequest,
@@ -95,6 +96,23 @@ interface LaunchRecord {
   runtime: PostLaunchRuntime | null;
 }
 
+/**
+ * A launch runs for minutes to hours (approvals, the deploy, post-launch workers) inside this
+ * process. Serverless platforms freeze or recycle the function once the response is sent and
+ * route later requests to other instances, so a launch there would stop mid-way, possibly after
+ * SOL has moved. Launches are refused on serverless until the orchestrator runs on a long-lived host.
+ */
+export function serverlessPlatform(env: Env): string | null {
+  if (env["VERCEL"]) return "Vercel";
+  if (env["AWS_LAMBDA_FUNCTION_NAME"]) return "AWS Lambda";
+  if (env["NETLIFY"]) return "Netlify";
+  return null;
+}
+
+export const LONG_LIVED_NEEDS = [
+  "run apps/web on a long-lived Node server (pnpm --filter @quantagent/web build && pnpm --filter @quantagent/web start), e.g. Railway, Render or Fly.io",
+];
+
 export function clusterFromEnv(env: Env): Cluster {
   const raw = env["SOLANA_CLUSTER"]?.trim();
   return resolveCluster(raw ? (raw as Cluster) : undefined, env as Record<string, string | undefined>);
@@ -140,6 +158,14 @@ export class OrchestratorService {
     if (!input.prompt?.trim()) throw new BadRequest("prompt is empty");
     if (!input.xAccountId?.trim()) throw new BadRequest("no X account is connected");
     if (!input.ownerWallet?.trim()) throw new BadRequest("no wallet is connected");
+    const platform = serverlessPlatform(this.env);
+    if (platform) {
+      throw new NotImplemented(
+        "launch",
+        `this deployment runs on ${platform} serverless functions, which stop between requests; a launch needs one long-lived process for its whole life`,
+        LONG_LIVED_NEEDS,
+      );
+    }
     const cluster = clusterFromEnv(this.env);
     const id = newLaunchId();
     const devBuySol = input.options?.devBuySol ?? devBuySolFromEnv(this.env);
@@ -468,7 +494,10 @@ export class OrchestratorService {
     if (!this.env[WALLET_KEY_ENV]?.trim()) {
       return { ok: false, name: "NotImplemented", message: `agent wallet: ${WALLET_KEY_ENV} not set (needs: ${WALLET_KEY_ENV})`, capability: "agent wallet", because: `${WALLET_KEY_ENV} not set`, needs: [WALLET_KEY_ENV] };
     }
-    const notes: string[] = [`wallet keys at rest: ${this.shared.wallets.kind}${this.shared.wallets.kind === "memory" ? " (lost on restart; set DATABASE_URL)" : ""}`];
+    const platform = serverlessPlatform(this.env);
+    const notes: string[] = [
+      ...(platform ? [`${platform} serverless: pages and connections work, launches are refused (they need a long-lived Node server)`] : []),
+      `wallet keys at rest: ${this.shared.wallets.kind}${this.shared.wallets.kind === "memory" ? " (lost on restart; set DATABASE_URL)" : ""}`];
     if (cluster === "devnet" && !this.env["PUMPPORTAL_URL"]?.trim()) {
       notes.push("devnet: pump.fun create/buy/sell need PUMPPORTAL_URL pointed at a devnet trade-local endpoint (PumpPortal itself is mainnet-only)");
     }

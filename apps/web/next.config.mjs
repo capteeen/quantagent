@@ -11,6 +11,12 @@ const config = {
   transpilePackages: ["@quantagent/core", "@quantagent/workers", "@quantagent/x", "@quantagent/solana", "@quantagent/ui"],
   experimental: {
     externalDir: true,
+    // Monorepo: trace server files from the repo root so the deployed function keeps the
+    // workspace layout, and ship /docs with /how (it renders those files at request time).
+    outputFileTracingRoot: repoRoot,
+    outputFileTracingIncludes: {
+      "/how": ["../../docs/**/*.md", "../../pnpm-workspace.yaml"],
+    },
     // Node-only dependencies of the server packages stay out of the bundle.
     serverComponentsExternalPackages: ["bullmq", "ioredis", "pg", "sharp", "jimp", "@aws-sdk/client-s3"],
   },
