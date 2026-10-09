@@ -106,10 +106,10 @@ describe("XOAuth connector", () => {
     const clock = new FakeClock();
     const f = mockFetch((call) => {
       if (call.url.pathname === "/2/oauth2/token") {
-        return { json: { access_token: "AT", refresh_token: "RT", expires_in: 7200, scope: X_SCOPES.join(" ") } };
+        return { json: { access_token: "plaintext-access-token-must-not-leak", refresh_token: "plaintext-refresh-token-must-not-leak", expires_in: 7200, scope: X_SCOPES.join(" ") } };
       }
       if (call.url.pathname === "/2/users/me") {
-        expect(call.headers["authorization"]).toBe("Bearer AT");
+        expect(call.headers["authorization"]).toBe("Bearer plaintext-access-token-must-not-leak");
         return { json: { data: { id: "42", username: "projectx", name: "Project X", public_metrics: { followers_count: 9 } } } };
       }
       return { status: 404 };
@@ -130,9 +130,9 @@ describe("XOAuth connector", () => {
     const body = f.calls[0]!.body as URLSearchParams;
     expect(challengeFor(body.get("code_verifier")!)).toBe(new URL(url).searchParams.get("code_challenge"));
     // At rest: ciphertext only.
-    expect(JSON.stringify(store.rawRows())).not.toContain("AT");
-    expect(JSON.stringify(store.rawRows())).not.toContain("RT");
-    expect(await store.get("42")).toMatchObject({ accessToken: "AT" });
+    expect(JSON.stringify(store.rawRows())).not.toContain("plaintext-access-token-must-not-leak");
+    expect(JSON.stringify(store.rawRows())).not.toContain("plaintext-refresh-token-must-not-leak");
+    expect(await store.get("42")).toMatchObject({ accessToken: "plaintext-access-token-must-not-leak" });
   });
 
   it("rejects an unknown state and expires stale ones", async () => {
