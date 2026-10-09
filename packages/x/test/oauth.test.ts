@@ -123,7 +123,7 @@ describe("XOAuth connector", () => {
     const stored = await oauth.complete({ code: "code-1", state });
     expect(stored.accountId).toBe("42");
     expect(stored.handle).toBe("projectx");
-    expect(stored.refreshToken).toBe("RT");
+    expect(stored.refreshToken).toBe("plaintext-refresh-token-must-not-leak");
     expect(stored.expiresAt).toBe(new Date(clock.t + 7200 * 1000).toISOString());
     expect(oauth.pendingCount()).toBe(0);
     // The exchange used the verifier that matches the challenge in the URL.
