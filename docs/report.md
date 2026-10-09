@@ -68,6 +68,14 @@ No blocking findings. Notes that remain:
   (they do not publish text). Launch registry is in-process; a restart forgets
   in-flight launches unless `DATABASE_URL` is set for the event store.
 
+## Where to host it
+
+A launch lives in one long-lived Node process for minutes to hours. Run the web app with
+`next start` on a long-lived host (Railway, Render, Fly.io or a VM) with managed Postgres
+and Redis for real launches. On Vercel the pages, X connect, wallet connect and the
+status/how/coin/me pages work, and creating a launch returns a 501 `NotImplemented`
+naming the long-lived host it needs (see apps/web/README.md, "Deploy").
+
 ## Exact environment variables for a mainnet launch
 
 Copy `apps/web/.env.example` (every variable, grouped by package, with comments)
